@@ -64,7 +64,7 @@ func TestAsyncMultiInterceptor(t *testing.T) {
 	})
 
 	vecto.Interceptors.Request.Use(func(ctx context.Context, req Request) (resultReq Request, err error) {
-		statusCodeStr := strings.TrimPrefix(req.Url, srv.URL+"/test/status/")
+		statusCodeStr := strings.TrimPrefix(req.FullUrl, srv.URL+"/test/status/")
 
 		statusCode, _ := strconv.Atoi(statusCodeStr)
 		req.Completed(func(event RequestCompletedEvent) {

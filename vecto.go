@@ -145,7 +145,7 @@ func (v *Vecto) interceptResponse(ctx context.Context, res *Response) (resultRes
 	return resultRes, nil
 }
 
-func (v *Vecto) newRequest(url string, method string, options *RequestOptions) (req Request, err error) {
+func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions) (req Request, err error) {
 	reqOptions := RequestOptions{}
 	if options != nil {
 		reqOptions = *options
@@ -155,14 +155,13 @@ func (v *Vecto) newRequest(url string, method string, options *RequestOptions) (
 	for key, value := range v.config.Headers {
 		headersCopy[key] = value
 	}
-
 	for key, value := range reqOptions.Headers {
 		headersCopy[key] = value
 	}
 
-	finalUrl, err := v.getFinalURL(url, reqOptions.Params)
+	fullUrl, err := v.getUrlInstance(urlStr, reqOptions.Params)
 	if err != nil {
-		return req, err
+		return Request{}, err
 	}
 
 	requestTransform := ApplicationJsonReqTransformer
@@ -170,16 +169,21 @@ func (v *Vecto) newRequest(url string, method string, options *RequestOptions) (
 		requestTransform = options.RequestTransform
 	}
 
-	emptyReq, _ := http.NewRequest(method, finalUrl, bytes.NewReader([]byte{}))
+	emptyReq, _ := http.NewRequest(method, fullUrl.String(), bytes.NewReader([]byte{}))
+	baseUrl := fullUrl.Scheme + "://" + fullUrl.Host + fullUrl.Path
 
 	req = Request{
-		Url:              finalUrl,
+		FullUrl:          fullUrl.String(),
+		BaseUrl:          baseUrl,
 		Method:           method,
 		Params:           reqOptions.Params,
 		Headers:          headersCopy,
 		Data:             reqOptions.Data,
 		requestTransform: requestTransform,
 		rawRequest:       emptyReq,
+		Host:             fullUrl.Host,
+		Scheme:           fullUrl.Scheme,
+		Path:             fullUrl.Path,
 		events: requestEvents{
 			completed: make([]RequestCompletedCallback, 0),
 		},
@@ -188,7 +192,7 @@ func (v *Vecto) newRequest(url string, method string, options *RequestOptions) (
 	return req, nil
 }
 
-func (v *Vecto) getFinalURL(reqUrl string, params map[string]any) (finalURL string, err error) {
+func (v *Vecto) getUrlInstance(reqUrl string, params map[string]any) (finalURL *url.URL, err error) {
 	url, err := url.Parse(v.config.BaseURL + reqUrl)
 	if err != nil {
 		return finalURL, err
@@ -200,7 +204,7 @@ func (v *Vecto) getFinalURL(reqUrl string, params map[string]any) (finalURL stri
 	}
 
 	url.RawQuery = urlParams.Encode()
-	return url.String(), nil
+	return url, nil
 }
 
 func (v *Vecto) setHttpClient() (err error) {

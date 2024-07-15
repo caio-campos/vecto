@@ -30,17 +30,6 @@ var supportedMethods = map[string]bool{
 
 type handleReqMethod func(ctx context.Context, url string, options *RequestOptions) (res *Response, err error)
 
-func TestNewVecto(t *testing.T) {
-	t.Skip()
-
-	vecto, err := New(Config{
-		BaseURL: "https://test.api.com.br/",
-	})
-
-	assert.NotNil(t, vecto)
-	assert.Nil(t, err)
-}
-
 func TestHeaderConfiguration(t *testing.T) {
 	customHeaderExpectedValue := "custom"
 	anotherHeaderOriginalValue := "another"
