@@ -57,6 +57,21 @@ func newHTTPTestServer() *httptest.Server {
 				return
 			}
 
+			if r.URL.Path == "/test/query" {
+				w.Header().Add("Content-Type", "application/json")
+
+				// Verifica se o parâmetro "added_param" está presente na query string
+				queryValues := r.URL.Query()
+				if queryValues.Get("added_param") == "1" {
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte(`{"message": "Query parameter received"}`))
+				} else {
+					w.WriteHeader(http.StatusBadRequest)
+					w.Write([]byte(`{"message": "Missing query parameter"}`))
+				}
+				return
+			}
+
 			if r.Method == http.MethodGet && r.URL.Path == "/test/pets/1" {
 				w.Header().Add("Content-Type", "application/json")
 				w.Write([]byte(`{"id": "1", "name":"Little Tony","owner":{"login": "ccampos"}}`))

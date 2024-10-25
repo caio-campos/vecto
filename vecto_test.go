@@ -54,9 +54,9 @@ func TestHeaderConfiguration(t *testing.T) {
 		},
 	})
 
-	xCustomHeaderValue, xCustomHeaderOk := res.request.Headers["x-custom"]
-	xAnotherHeaderValue, xAnotherHeaderOk := res.request.Headers["x-another"]
-	xReqCustomHeaderValue, xReqCustomHeaderOk := res.request.Headers["x-req-custom"]
+	xCustomHeaderValue, xCustomHeaderOk := res.request.headers["x-custom"]
+	xAnotherHeaderValue, xAnotherHeaderOk := res.request.headers["x-another"]
+	xReqCustomHeaderValue, xReqCustomHeaderOk := res.request.headers["x-req-custom"]
 
 	assert.True(t, xCustomHeaderOk)
 	assert.True(t, xAnotherHeaderOk)

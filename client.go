@@ -14,7 +14,7 @@ func (c *DefaultClient) Do(ctx context.Context, req Request) (res *Response, err
 	reqCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	httpReq, err := req.ToHTTPRequest(reqCtx)
+	httpReq, err := req.toHTTPRequest(reqCtx)
 	if err != nil {
 		return res, err
 	}

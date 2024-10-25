@@ -23,12 +23,12 @@ func TestReqInterceptor(t *testing.T) {
 	})
 
 	vecto.Interceptors.Request.Use(func(ctx context.Context, req Request) (resultReq Request, err error) {
-		req.Headers["x-custom"] = "custom"
+		req.SetHeader("x-custom", "custom")
 		return req, nil
 	})
 
 	vecto.Interceptors.Request.Use(func(ctx context.Context, req Request) (resultReq Request, err error) {
-		req.Headers["x-another"] = "another"
+		req.SetHeader("x-another", "another")
 		return req, nil
 	})
 
@@ -36,7 +36,7 @@ func TestReqInterceptor(t *testing.T) {
 
 	res, err := vecto.Post(context.Background(), "/test/custom-header", &RequestOptions{})
 
-	assert.Equal(t, res.request.Headers["x-another"], "another")
+	assert.Equal(t, res.request.headers["x-another"], "another")
 	assert.Nil(t, err)
 	assert.NotNil(t, res)
 	assert.Equal(t, http.StatusOK, res.StatusCode)
@@ -53,18 +53,18 @@ func TestAsyncMultiInterceptor(t *testing.T) {
 	wg := sync.WaitGroup{}
 
 	vecto.Interceptors.Request.Use(func(ctx context.Context, req Request) (resultReq Request, err error) {
-		req.Headers["x-req-id"] = req.Headers["x-index"]
+		req.headers["x-req-id"] = req.headers["x-index"]
 
 		return req, nil
 	})
 
 	vecto.Interceptors.Request.Use(func(ctx context.Context, req Request) (resultReq Request, err error) {
-		assert.Equal(t, req.Headers["x-req-id"], req.Headers["x-index"])
+		assert.Equal(t, req.headers["x-req-id"], req.headers["x-index"])
 		return req, nil
 	})
 
 	vecto.Interceptors.Request.Use(func(ctx context.Context, req Request) (resultReq Request, err error) {
-		statusCodeStr := strings.TrimPrefix(req.FullUrl, srv.URL+"/test/status/")
+		statusCodeStr := strings.TrimPrefix(req.requestUrl, srv.URL+"/test/status/")
 
 		statusCode, _ := strconv.Atoi(statusCodeStr)
 		req.Completed(func(event RequestCompletedEvent) {
@@ -127,5 +127,32 @@ func TestResInterceptor(t *testing.T) {
 
 	assert.Nil(t, err)
 	assert.NotNil(t, res)
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+}
+
+func TestReqInterceptorAddQueryParam(t *testing.T) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	vecto, _ := New(Config{
+		BaseURL: srv.URL,
+	})
+
+	// Adiciona um interceptor que adiciona um query param "added_param=1"
+	vecto.Interceptors.Request.Use(func(ctx context.Context, req Request) (resultReq Request, err error) {
+		req.SetParam("added_param", "1")
+		return req, nil
+	})
+
+	// Certifica-se de que o interceptor foi adicionado
+	assert.Len(t, vecto.Interceptors.Request.interceptors, 1)
+
+	// Executa uma requisição GET para um endpoint de teste
+	res, err := vecto.Get(context.Background(), "/test/query", &RequestOptions{})
+
+	// Verifica se o parâmetro foi adicionado na URL final
+	assert.Nil(t, err)
+	assert.NotNil(t, res)
+	assert.Contains(t, res.request.requestUrl, "added_param=1")
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 }

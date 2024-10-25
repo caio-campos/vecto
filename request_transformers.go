@@ -6,13 +6,13 @@ import (
 )
 
 func ApplicationJsonReqTransformer(req Request) (data []byte, err error) {
-	return json.Marshal(req.Data)
+	return json.Marshal(req.data)
 }
 
 func FormEncodedReqTransformer(req Request) (data []byte, err error) {
 	paramsMap := make(map[string]string)
-	if req.Data != nil {
-		dataMap, ok := req.Data.(map[string]string)
+	if req.data != nil {
+		dataMap, ok := req.data.(map[string]string)
 		if ok {
 			paramsMap = dataMap
 		}
