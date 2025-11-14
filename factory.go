@@ -8,6 +8,10 @@ import (
 	"time"
 )
 
+const (
+	defaultIdleConnTimeout = 50 * time.Second
+)
+
 type httpClientFactory struct {
 	config Config
 }
@@ -54,7 +58,7 @@ func (h *httpClientFactory) make() (client http.Client, err error) {
 func (h *httpClientFactory) getTransportConfig() (transport *http.Transport, err error) {
 	if len(h.config.Certificates) == 0 {
 		transport = &http.Transport{
-			IdleConnTimeout: 50 * time.Second,
+			IdleConnTimeout: defaultIdleConnTimeout,
 		}
 
 		return transport, err
@@ -85,7 +89,7 @@ func (h *httpClientFactory) getTransportConfig() (transport *http.Transport, err
 
 	transport = &http.Transport{
 		TLSClientConfig: tlsConfig,
-		IdleConnTimeout: 50 * time.Second,
+		IdleConnTimeout: defaultIdleConnTimeout,
 	}
 
 	return transport, err
