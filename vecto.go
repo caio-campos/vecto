@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
-	"dario.cat/mergo"
 )
 
 // Vecto is the main HTTP client wrapper.
@@ -37,18 +35,16 @@ var defaultConfig = Config{
 }
 
 func New(config Config) (v *Vecto, err error) {
-	if err = mergo.Merge(&config, defaultConfig); err != nil {
-		return nil, err
-	}
+	mergedConfig := mergeConfig(config, defaultConfig)
 
 	instance := Vecto{
-		config: config,
+		config: mergedConfig,
 	}
 
-	if config.Logger == nil {
+	if mergedConfig.Logger == nil {
 		instance.logger = newNoopLogger()
 	} else {
-		instance.logger = config.Logger
+		instance.logger = mergedConfig.Logger
 	}
 
 	err = instance.setHttpClient()
@@ -57,6 +53,55 @@ func New(config Config) (v *Vecto, err error) {
 	}
 
 	return &instance, nil
+}
+
+func mergeConfig(provided, defaults Config) Config {
+	result := defaults
+
+	if provided.BaseURL != "" {
+		result.BaseURL = provided.BaseURL
+	}
+
+	if provided.Timeout != 0 {
+		result.Timeout = provided.Timeout
+	}
+
+	if provided.Headers != nil {
+		if result.Headers == nil {
+			result.Headers = make(map[string]string)
+		}
+		for k, v := range provided.Headers {
+			result.Headers[k] = v
+		}
+	}
+
+	if provided.Certificates != nil {
+		result.Certificates = provided.Certificates
+	}
+
+	if provided.HTTPTransport != nil {
+		result.HTTPTransport = provided.HTTPTransport
+	}
+
+	if provided.Adapter != nil {
+		result.Adapter = provided.Adapter
+	}
+
+	if provided.RequestTransform != nil {
+		result.RequestTransform = provided.RequestTransform
+	}
+
+	if provided.ValidateStatus != nil {
+		result.ValidateStatus = provided.ValidateStatus
+	}
+
+	result.InsecureSkipVerify = provided.InsecureSkipVerify
+
+	if provided.Logger != nil {
+		result.Logger = provided.Logger
+	}
+
+	return result
 }
 
 func (v *Vecto) Post(ctx context.Context, url string, options *RequestOptions) (res *Response, err error) {
@@ -154,7 +199,7 @@ func (v *Vecto) dispatchRequestCompleted(res *Response) {
 	}
 
 	requestUrl := res.request.FullUrl()
-	
+
 	res.request.mu.RLock()
 	callbacks := make([]RequestCompletedCallback, len(res.request.events.completed))
 	copy(callbacks, res.request.events.completed)
