@@ -32,6 +32,10 @@ func (l *SimpleLogger) Error(ctx context.Context, msg string, fields map[string]
 	log.Printf("[ERROR] %s: %s %v", l.prefix, msg, fields)
 }
 
+func (l *SimpleLogger) IsNoop() bool {
+	return false
+}
+
 func ExampleWithLogger() {
 	logger := NewSimpleLogger("MyAPI")
 

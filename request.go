@@ -14,19 +14,21 @@ import (
 // All public methods are protected by an internal mutex to ensure
 // thread-safe operations across multiple goroutines.
 type Request struct {
-	mu        sync.RWMutex
-	baseURL   string
-	url       string
-	host      string
-	scheme    string
-	path      string
-	method    string
-	params    map[string]any
-	headers   map[string]string
-	data      interface{}
-	transform RequestTransformFunc
-	rawReq    *http.Request
-	events    requestEvents
+	mu          sync.RWMutex
+	baseURL     string
+	url         string
+	host        string
+	scheme      string
+	path        string
+	method      string
+	params      map[string]any
+	headers     map[string]string
+	data        interface{}
+	transform   RequestTransformFunc
+	rawReq      *http.Request
+	events      requestEvents
+	cbKey       string
+	cbKeyCached bool
 }
 
 // Completed adds a callback function that is triggered when the request completes.
@@ -210,11 +212,15 @@ func (r *Request) toHTTPRequest(ctx context.Context) (*http.Request, error) {
 }
 
 func (r *Request) attachHeadersToHttpReqUnsafe(httpReq *http.Request) {
-	header := make(http.Header)
-
-	for key, value := range r.headers {
-		header[key] = []string{value}
+	if len(r.headers) == 0 {
+		return
 	}
 
-	httpReq.Header = header
+	if httpReq.Header == nil {
+		httpReq.Header = make(http.Header, len(r.headers))
+	}
+
+	for key, value := range r.headers {
+		httpReq.Header[key] = []string{value}
+	}
 }

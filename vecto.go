@@ -14,11 +14,11 @@ import (
 // However, Request and Response objects should not be shared between goroutines
 // or modified after being passed to request methods.
 type Vecto struct {
-	config              Config
-	client              Client
-	logger              Logger
-	Interceptors        interceptorCollectionWrapper
-	circuitBreakerMgr   *CircuitBreakerManager
+	config            Config
+	client            Client
+	logger            Logger
+	Interceptors      interceptorCollectionWrapper
+	circuitBreakerMgr *CircuitBreakerManager
 }
 
 var defaultConfig = Config{
@@ -242,19 +242,23 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 
 	request, err := v.newRequest(url, method, options)
 	if err != nil {
-		v.logger.Error(ctx, "failed to create request", map[string]interface{}{
-			"url":    url,
-			"method": method,
-			"error":  err.Error(),
-		})
+		if !v.logger.IsNoop() {
+			v.logger.Error(ctx, "failed to create request", map[string]interface{}{
+				"url":    url,
+				"method": method,
+				"error":  err.Error(),
+			})
+		}
 		v.recordMetricsWithFallback(ctx, method, url, nil, nil, time.Since(startTime), err)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	v.logger.Debug(ctx, "request created", map[string]interface{}{
-		"url":    request.FullUrl(),
-		"method": request.Method(),
-	})
+	if !v.logger.IsNoop() {
+		v.logger.Debug(ctx, "request created", map[string]interface{}{
+			"url":    request.FullUrl(),
+			"method": request.Method(),
+		})
+	}
 
 	if v.config.Adapter != nil {
 		result, adapterErr := v.config.Adapter(request)
@@ -264,85 +268,116 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 
 	request, err = v.interceptRequest(ctx, request)
 	if err != nil {
-		v.logger.Error(ctx, "request interceptor failed", map[string]interface{}{
-			"url":   request.FullUrl(),
-			"error": err.Error(),
-		})
+		if !v.logger.IsNoop() {
+			v.logger.Error(ctx, "request interceptor failed", map[string]interface{}{
+				"url":   request.FullUrl(),
+				"error": err.Error(),
+			})
+		}
 		v.recordMetrics(ctx, request, nil, time.Since(startTime), err)
 		return nil, fmt.Errorf("request interceptor failed: %w", err)
 	}
 
+	var cbKey string
+	var breaker *CircuitBreaker
+
 	if v.circuitBreakerMgr != nil {
-		cbKey := v.getCircuitBreakerKey(request)
-		breaker := v.circuitBreakerMgr.GetOrCreate(cbKey, nil)
-		
+		request.mu.RLock()
+		if request.cbKeyCached {
+			cbKey = request.cbKey
+			request.mu.RUnlock()
+		} else {
+			request.mu.RUnlock()
+			request.mu.Lock()
+			if !request.cbKeyCached {
+				request.cbKey = v.getCircuitBreakerKey(request)
+				request.cbKeyCached = true
+			}
+			cbKey = request.cbKey
+			request.mu.Unlock()
+		}
+
+		breaker = v.circuitBreakerMgr.GetOrCreate(cbKey, nil)
+
 		res, err = breaker.Execute(ctx, func() (*Response, error) {
 			return v.client.Do(ctx, request)
 		})
-		
+
 		if err != nil {
+			duration := time.Since(startTime)
 			if _, isCbError := err.(*CircuitBreakerError); isCbError {
-				v.logger.Warn(ctx, "request blocked by circuit breaker", map[string]interface{}{
-					"url":    request.FullUrl(),
-					"method": request.Method(),
-					"key":    cbKey,
-					"state":  breaker.GetState().String(),
-				})
-				v.recordMetrics(ctx, request, nil, time.Since(startTime), err)
+				if !v.logger.IsNoop() {
+					v.logger.Warn(ctx, "request blocked by circuit breaker", map[string]interface{}{
+						"url":    request.FullUrl(),
+						"method": request.Method(),
+						"key":    cbKey,
+						"state":  breaker.GetState().String(),
+					})
+				}
+				v.recordMetrics(ctx, request, nil, duration, err)
 				return nil, err
 			}
-			
-			v.logger.Error(ctx, "http request failed", map[string]interface{}{
-				"url":    request.FullUrl(),
-				"method": request.Method(),
-				"error":  err.Error(),
-			})
-			v.recordMetrics(ctx, request, nil, time.Since(startTime), err)
+
+			if !v.logger.IsNoop() {
+				v.logger.Error(ctx, "http request failed", map[string]interface{}{
+					"url":    request.FullUrl(),
+					"method": request.Method(),
+					"error":  err.Error(),
+				})
+			}
+			v.recordMetrics(ctx, request, nil, duration, err)
 			return nil, fmt.Errorf("http request failed: %w", err)
 		}
 	} else {
 		res, err = v.client.Do(ctx, request)
 		if err != nil {
-			v.logger.Error(ctx, "http request failed", map[string]interface{}{
-				"url":    request.FullUrl(),
-				"method": request.Method(),
-				"error":  err.Error(),
-			})
-			v.recordMetrics(ctx, request, nil, time.Since(startTime), err)
+			duration := time.Since(startTime)
+			if !v.logger.IsNoop() {
+				v.logger.Error(ctx, "http request failed", map[string]interface{}{
+					"url":    request.FullUrl(),
+					"method": request.Method(),
+					"error":  err.Error(),
+				})
+			}
+			v.recordMetrics(ctx, request, nil, duration, err)
 			return nil, fmt.Errorf("http request failed: %w", err)
 		}
 	}
 
-	v.logger.Info(ctx, "request completed", map[string]interface{}{
-		"url":         request.FullUrl(),
-		"method":      request.Method(),
-		"status_code": res.StatusCode,
-	})
+	duration := time.Since(startTime)
+
+	if !v.logger.IsNoop() {
+		v.logger.Info(ctx, "request completed", map[string]interface{}{
+			"url":         request.FullUrl(),
+			"method":      request.Method(),
+			"status_code": res.StatusCode,
+		})
+	}
 
 	res.success = v.config.ValidateStatus(res)
-	
+
 	if v.circuitBreakerMgr != nil {
-		cbKey := v.getCircuitBreakerKey(request)
-		breaker := v.circuitBreakerMgr.Get(cbKey)
 		if breaker != nil {
 			breaker.RecordResult(res, nil)
 		}
 	}
-	
+
 	resultRes, err := v.interceptResponse(ctx, res)
 	if err != nil {
-		v.logger.Error(ctx, "response interceptor failed", map[string]interface{}{
-			"url":         request.FullUrl(),
-			"status_code": res.StatusCode,
-			"error":       err.Error(),
-		})
-		v.recordMetrics(ctx, request, res, time.Since(startTime), err)
+		if !v.logger.IsNoop() {
+			v.logger.Error(ctx, "response interceptor failed", map[string]interface{}{
+				"url":         request.FullUrl(),
+				"status_code": res.StatusCode,
+				"error":       err.Error(),
+			})
+		}
+		v.recordMetrics(ctx, request, res, duration, err)
 		return nil, fmt.Errorf("response interceptor failed: %w", err)
 	}
 
 	v.dispatchRequestCompleted(ctx, resultRes)
 
-	v.recordMetrics(ctx, request, resultRes, time.Since(startTime), nil)
+	v.recordMetrics(ctx, request, resultRes, duration, nil)
 
 	return resultRes, nil
 }
@@ -595,15 +630,15 @@ func (v *Vecto) normalizeURL(req *Request) string {
 func (v *Vecto) getCircuitBreakerKey(req *Request) string {
 	scheme := req.Scheme()
 	host := req.Host()
-	
+
 	if host == "" {
 		return "default"
 	}
-	
+
 	if scheme == "" {
 		return host
 	}
-	
+
 	return fmt.Sprintf("%s://%s", scheme, host)
 }
 
