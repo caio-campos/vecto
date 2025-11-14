@@ -72,6 +72,7 @@ type Config struct {
 	MaxResponseBodySize    int64
 	MaxConcurrentCallbacks int
 	CallbackTimeout        time.Duration
+	CircuitBreaker         *CircuitBreakerConfig
 }
 
 type Client interface {

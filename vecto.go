@@ -14,10 +14,11 @@ import (
 // However, Request and Response objects should not be shared between goroutines
 // or modified after being passed to request methods.
 type Vecto struct {
-	config       Config
-	client       Client
-	logger       Logger
-	Interceptors interceptorCollectionWrapper
+	config              Config
+	client              Client
+	logger              Logger
+	Interceptors        interceptorCollectionWrapper
+	circuitBreakerMgr   *CircuitBreakerManager
 }
 
 var defaultConfig = Config{
@@ -52,6 +53,14 @@ func New(config Config) (v *Vecto, err error) {
 		instance.logger = newNoopLogger()
 	} else {
 		instance.logger = mergedConfig.Logger
+	}
+
+	if mergedConfig.CircuitBreaker != nil {
+		cbConfig := *mergedConfig.CircuitBreaker
+		if cbConfig.Logger == nil {
+			cbConfig.Logger = instance.logger
+		}
+		instance.circuitBreakerMgr = NewCircuitBreakerManager(cbConfig, instance.logger)
 	}
 
 	err = instance.setHTTPClient()
@@ -165,6 +174,10 @@ func mergeConfig(provided, defaults Config) Config {
 		result.CallbackTimeout = provided.CallbackTimeout
 	}
 
+	if provided.CircuitBreaker != nil {
+		result.CircuitBreaker = provided.CircuitBreaker
+	}
+
 	return result
 }
 
@@ -259,15 +272,45 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 		return nil, fmt.Errorf("request interceptor failed: %w", err)
 	}
 
-	res, err = v.client.Do(ctx, request)
-	if err != nil {
-		v.logger.Error(ctx, "http request failed", map[string]interface{}{
-			"url":    request.FullUrl(),
-			"method": request.Method(),
-			"error":  err.Error(),
+	if v.circuitBreakerMgr != nil {
+		cbKey := v.getCircuitBreakerKey(request)
+		breaker := v.circuitBreakerMgr.GetOrCreate(cbKey, nil)
+		
+		res, err = breaker.Execute(ctx, func() (*Response, error) {
+			return v.client.Do(ctx, request)
 		})
-		v.recordMetrics(ctx, request, nil, time.Since(startTime), err)
-		return nil, fmt.Errorf("http request failed: %w", err)
+		
+		if err != nil {
+			if _, isCbError := err.(*CircuitBreakerError); isCbError {
+				v.logger.Warn(ctx, "request blocked by circuit breaker", map[string]interface{}{
+					"url":    request.FullUrl(),
+					"method": request.Method(),
+					"key":    cbKey,
+					"state":  breaker.GetState().String(),
+				})
+				v.recordMetrics(ctx, request, nil, time.Since(startTime), err)
+				return nil, err
+			}
+			
+			v.logger.Error(ctx, "http request failed", map[string]interface{}{
+				"url":    request.FullUrl(),
+				"method": request.Method(),
+				"error":  err.Error(),
+			})
+			v.recordMetrics(ctx, request, nil, time.Since(startTime), err)
+			return nil, fmt.Errorf("http request failed: %w", err)
+		}
+	} else {
+		res, err = v.client.Do(ctx, request)
+		if err != nil {
+			v.logger.Error(ctx, "http request failed", map[string]interface{}{
+				"url":    request.FullUrl(),
+				"method": request.Method(),
+				"error":  err.Error(),
+			})
+			v.recordMetrics(ctx, request, nil, time.Since(startTime), err)
+			return nil, fmt.Errorf("http request failed: %w", err)
+		}
 	}
 
 	v.logger.Info(ctx, "request completed", map[string]interface{}{
@@ -277,6 +320,15 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 	})
 
 	res.success = v.config.ValidateStatus(res)
+	
+	if v.circuitBreakerMgr != nil {
+		cbKey := v.getCircuitBreakerKey(request)
+		breaker := v.circuitBreakerMgr.Get(cbKey)
+		if breaker != nil {
+			breaker.RecordResult(res, nil)
+		}
+	}
+	
 	resultRes, err := v.interceptResponse(ctx, res)
 	if err != nil {
 		v.logger.Error(ctx, "response interceptor failed", map[string]interface{}{
@@ -538,6 +590,21 @@ func (v *Vecto) normalizeURL(req *Request) string {
 	}
 
 	return fmt.Sprintf("%s://%s%s", scheme, host, path)
+}
+
+func (v *Vecto) getCircuitBreakerKey(req *Request) string {
+	scheme := req.Scheme()
+	host := req.Host()
+	
+	if host == "" {
+		return "default"
+	}
+	
+	if scheme == "" {
+		return host
+	}
+	
+	return fmt.Sprintf("%s://%s", scheme, host)
 }
 
 func (v *Vecto) setHTTPClient() (err error) {
