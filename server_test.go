@@ -78,14 +78,22 @@ func newHTTPTestServer() *httptest.Server {
 				return
 			}
 
-			if r.URL.Path == "/test/slow" {
-				time.Sleep(time.Second * 6)
-				w.Header().Add("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				return
-			}
+		if r.URL.Path == "/test/slow" {
+			time.Sleep(time.Second * 6)
+			w.Header().Add("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 
-			w.WriteHeader(http.StatusNotFound)
+		if r.URL.Path == "/test/large-response" {
+			w.Header().Add("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			data := strings.Repeat("x", MaxResponseBodySize+1024*1024)
+			w.Write([]byte(data))
+			return
+		}
+
+		w.WriteHeader(http.StatusNotFound)
 		}),
 	)
 }

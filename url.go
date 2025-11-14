@@ -6,16 +6,16 @@ import (
 )
 
 func getUrlInstance(reqUrl string, params map[string]any) (finalURL *url.URL, err error) {
-	url, err := url.Parse(reqUrl)
+	parsedURL, err := url.Parse(reqUrl)
 	if err != nil {
 		return finalURL, err
 	}
 
-	urlParams := url.Query()
+	urlParams := parsedURL.Query()
 	for key, value := range params {
 		urlParams.Add(key, fmt.Sprintf("%v", value))
 	}
 
-	url.RawQuery = urlParams.Encode()
-	return url, nil
+	parsedURL.RawQuery = urlParams.Encode()
+	return parsedURL, nil
 }

@@ -1,6 +1,10 @@
 package vecto
 
-import "net/http"
+import (
+	"bytes"
+	"io"
+	"net/http"
+)
 
 // Response represents an HTTP response.
 //
@@ -13,6 +17,78 @@ type Response struct {
 	RawRequest  *http.Request
 	RawResponse *http.Response
 	success     bool
+}
+
+// deepCopy cria uma cópia profunda da Response para uso seguro em callbacks assíncronos
+func (r *Response) deepCopy() *Response {
+	if r == nil {
+		return nil
+	}
+
+	// Copia o slice de bytes
+	dataCopy := make([]byte, len(r.Data))
+	copy(dataCopy, r.Data)
+
+	// Copia o http.Request
+	var rawReqCopy *http.Request
+	if r.RawRequest != nil {
+		rawReqCopy = r.RawRequest.Clone(r.RawRequest.Context())
+	}
+
+	// Copia o http.Response (mais complexo)
+	var rawResCopy *http.Response
+	if r.RawResponse != nil {
+		rawResCopy = &http.Response{
+			Status:           r.RawResponse.Status,
+			StatusCode:       r.RawResponse.StatusCode,
+			Proto:            r.RawResponse.Proto,
+			ProtoMajor:       r.RawResponse.ProtoMajor,
+			ProtoMinor:       r.RawResponse.ProtoMinor,
+			Header:           cloneHTTPHeaders(r.RawResponse.Header),
+			ContentLength:    r.RawResponse.ContentLength,
+			TransferEncoding: cloneStringSlice(r.RawResponse.TransferEncoding),
+			Close:            r.RawResponse.Close,
+			Uncompressed:     r.RawResponse.Uncompressed,
+			Trailer:          cloneHTTPHeaders(r.RawResponse.Trailer),
+			Request:          rawReqCopy,
+			TLS:              r.RawResponse.TLS, // TLS state é read-only, safe para compartilhar
+		}
+		
+		// Body já foi lido, não precisa copiar
+		rawResCopy.Body = io.NopCloser(bytes.NewReader(dataCopy))
+	}
+
+	// Request pode ser shallow copy porque é thread-safe (tem mutex interno)
+	return &Response{
+		Data:        dataCopy,
+		StatusCode:  r.StatusCode,
+		RawRequest:  rawReqCopy,
+		RawResponse: rawResCopy,
+		request:     r.request, // Request é thread-safe, pode compartilhar
+		success:     r.success,
+	}
+}
+
+func cloneHTTPHeaders(headers http.Header) http.Header {
+	if headers == nil {
+		return nil
+	}
+	
+	result := make(http.Header, len(headers))
+	for k, v := range headers {
+		result[k] = cloneStringSlice(v)
+	}
+	return result
+}
+
+func cloneStringSlice(s []string) []string {
+	if s == nil {
+		return nil
+	}
+	
+	result := make([]string, len(s))
+	copy(result, s)
+	return result
 }
 
 func (r *Response) Success() bool {

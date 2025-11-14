@@ -186,3 +186,31 @@ func TestRequestTransformPrecedence(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "request", string(overrideBody))
 }
+
+func TestNilContextHandling(t *testing.T) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	vecto, err := New(Config{
+		BaseURL: srv.URL,
+	})
+	assert.NoError(t, err)
+
+	res, err := vecto.Get(nil, "/test/pets/1", nil)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+}
+
+func TestResponseBodySizeLimit(t *testing.T) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	vecto, err := New(Config{
+		BaseURL: srv.URL,
+	})
+	assert.NoError(t, err)
+
+	_, err = vecto.Get(context.Background(), "/test/large-response", nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeded maximum size")
+}

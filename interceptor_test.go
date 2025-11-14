@@ -141,7 +141,6 @@ func TestReqInterceptorAddQueryParam(t *testing.T) {
 		BaseURL: srv.URL,
 	})
 
-	// Adiciona um interceptor que adiciona um query param "added_param=1"
 	vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
 		if err := req.SetParam("added_param", "1"); err != nil {
 			return req, err
@@ -149,15 +148,42 @@ func TestReqInterceptorAddQueryParam(t *testing.T) {
 		return req, nil
 	})
 
-	// Certifica-se de que o interceptor foi adicionado
-	assert.Len(t, vecto.Interceptors.Request.interceptors, 1)
+	assert.Len(t, vecto.Interceptors.Request.getAll(), 1)
 
-	// Executa uma requisição GET para um endpoint de teste
 	res, err := vecto.Get(context.Background(), "/test/query", &RequestOptions{})
 
-	// Verifica se o parâmetro foi adicionado na URL final
 	assert.Nil(t, err)
 	assert.NotNil(t, res)
 	assert.Contains(t, res.request.FullUrl(), "added_param=1")
 	assert.Equal(t, http.StatusOK, res.StatusCode)
+}
+
+func TestInterceptorConcurrentAccess(t *testing.T) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	vecto, _ := New(Config{
+		BaseURL: srv.URL,
+	})
+
+	var wg sync.WaitGroup
+	interceptorCount := 0
+
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (*Request, error) {
+				return req, nil
+			})
+		}()
+	}
+
+	wg.Wait()
+
+	interceptorCount = len(vecto.Interceptors.Request.getAll())
+	assert.Equal(t, 100, interceptorCount)
+
+	_, err := vecto.Get(context.Background(), "/test/pets/1", nil)
+	assert.Nil(t, err)
 }

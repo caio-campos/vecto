@@ -168,6 +168,11 @@ func (v *Vecto) Options(ctx context.Context, url string, options *RequestOptions
 }
 
 func (v *Vecto) Request(ctx context.Context, url string, method string, options *RequestOptions) (res *Response, err error) {
+	// Validação de context nil
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	request, err := v.newRequest(url, method, options)
 	if err != nil {
 		v.logger.Error(ctx, "failed to create request", map[string]interface{}{
@@ -223,41 +228,75 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 		return nil, fmt.Errorf("response interceptor failed: %w", err)
 	}
 
-	v.dispatchRequestCompleted(resultRes)
+	// Dispatch com context original preservado
+	v.dispatchRequestCompleted(ctx, resultRes)
 
 	return resultRes, nil
 }
 
-func (v *Vecto) dispatchRequestCompleted(res *Response) {
+// dispatchRequestCompleted executa callbacks em goroutines com timeout e rate limiting
+func (v *Vecto) dispatchRequestCompleted(ctx context.Context, res *Response) {
+	// Deep copy da Response para evitar race conditions
+	responseCopy := res.deepCopy()
+	
 	event := RequestCompletedEvent{
-		response: res,
+		response: responseCopy,
 	}
 
-	requestUrl := res.request.FullUrl()
+	requestUrl := responseCopy.request.FullUrl()
 
 	res.request.mu.RLock()
 	callbacks := make([]RequestCompletedCallback, len(res.request.events.completed))
 	copy(callbacks, res.request.events.completed)
 	res.request.mu.RUnlock()
 
+	// Semáforo para limitar goroutines concorrentes (máximo 100)
+	sem := make(chan struct{}, 100)
+
 	for _, cb := range callbacks {
+		sem <- struct{}{} // Adquire slot
+		
 		go func(callback RequestCompletedCallback, url string) {
 			defer func() {
+				<-sem // Libera slot
 				if r := recover(); r != nil {
-					v.logger.Error(context.Background(), "panic in request completed callback", map[string]interface{}{
+					// Usa contexto original para preservar trace
+					v.logger.Error(ctx, "panic in request completed callback", map[string]interface{}{
 						"panic": fmt.Sprintf("%v", r),
 						"url":   url,
 					})
 				}
 			}()
-			callback(event)
+			
+			// Timeout de 30 segundos para callbacks
+			callbackCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+			
+			// Canal para detectar se callback terminou
+			done := make(chan struct{})
+			go func() {
+				callback(event)
+				close(done)
+			}()
+			
+			// Aguarda callback ou timeout
+			select {
+			case <-done:
+				// Callback completou normalmente
+			case <-callbackCtx.Done():
+				v.logger.Error(ctx, "callback timeout exceeded", map[string]interface{}{
+					"url":     url,
+					"timeout": "30s",
+				})
+			}
 		}(cb, requestUrl)
 	}
 }
 
 func (v *Vecto) interceptRequest(ctx context.Context, req *Request) (resultReq *Request, err error) {
 	resultReq = req
-	for _, interceptor := range v.Interceptors.Request.interceptors {
+	// Usa getAll() thread-safe em vez de acessar slice diretamente
+	for _, interceptor := range v.Interceptors.Request.getAll() {
 		resultReq, err = interceptor(ctx, resultReq)
 		if err != nil {
 			return req, err
@@ -273,7 +312,8 @@ func (v *Vecto) interceptResponse(ctx context.Context, res *Response) (resultRes
 	}
 
 	resultRes = res
-	for _, interceptor := range v.Interceptors.Response.interceptors {
+	// Usa getAll() thread-safe em vez de acessar slice diretamente
+	for _, interceptor := range v.Interceptors.Response.getAll() {
 		resultRes, err = interceptor(ctx, resultRes)
 		if err != nil {
 			return resultRes, err
