@@ -353,3 +353,80 @@ func BenchmarkCircuitBreaker_Overhead(b *testing.B) {
 	})
 }
 
+func BenchmarkStringBuilding(b *testing.B) {
+	scheme := "https"
+	host := "api.example.com"
+	path := "/v1/users/123"
+
+	b.Run("WithStringBuilder", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			sb := getStringBuilder()
+			sb.WriteString(scheme)
+			sb.WriteString("://")
+			sb.WriteString(host)
+			sb.WriteString(path)
+			_ = sb.String()
+			putStringBuilder(sb)
+		}
+	})
+
+	b.Run("WithSprintf", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = fmt.Sprintf("%s://%s%s", scheme, host, path)
+		}
+	})
+
+	b.Run("WithConcatenation", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = scheme + "://" + host + path
+		}
+	})
+}
+
+func BenchmarkMapPreallocation(b *testing.B) {
+	headers := map[string]string{
+		"Content-Type":  "application/json",
+		"Authorization": "Bearer token",
+		"X-Request-Id":  "123",
+		"User-Agent":    "vecto/1.0",
+	}
+
+	b.Run("WithPreallocation", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			result := make(map[string]string, len(headers))
+			for k, v := range headers {
+				result[k] = v
+			}
+		}
+	})
+
+	b.Run("WithoutPreallocation", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			result := make(map[string]string)
+			for k, v := range headers {
+				result[k] = v
+			}
+		}
+	})
+}
+
+func BenchmarkRequestBuilderOptimized(b *testing.B) {
+	headers := map[string]string{
+		"Content-Type":  "application/json",
+		"Authorization": "Bearer token",
+		"X-Request-Id":  "123",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		builder := newRequestBuilder("http://api.example.com/users", "GET")
+		builder.SetHeaders(headers)
+		_, _ = builder.Build()
+	}
+}
+

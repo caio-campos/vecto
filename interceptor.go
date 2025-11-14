@@ -28,6 +28,10 @@ func (c *reqInterceptorCollection) getAll() []ReqInterceptorFunc {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	
+	if len(c.interceptors) == 0 {
+		return nil
+	}
+	
 	result := make([]ReqInterceptorFunc, len(c.interceptors))
 	copy(result, c.interceptors)
 	return result
@@ -47,6 +51,10 @@ func (c *resInterceptorCollection) Use(interceptor ResInterceptorFunc) {
 func (c *resInterceptorCollection) getAll() []ResInterceptorFunc {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	
+	if len(c.interceptors) == 0 {
+		return nil
+	}
 	
 	result := make([]ResInterceptorFunc, len(c.interceptors))
 	copy(result, c.interceptors)

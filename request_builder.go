@@ -10,23 +10,33 @@ func newRequestBuilder(basePath, method string) *requestBuilder {
 		request: &Request{
 			baseURL: basePath,
 			method:  method,
-			headers: make(map[string]string),
-			params:  make(map[string]any),
+			headers: make(map[string]string, 8),
+			params:  make(map[string]any, 4),
 		},
 	}
 }
 
 func (b *requestBuilder) SetHeader(key, value string) *requestBuilder {
-	if b.request.headers == nil {
-		b.request.headers = make(map[string]string)
+	if key != "" {
+		if b.request.headers == nil {
+			b.request.headers = make(map[string]string, 8)
+		}
+		b.request.headers[key] = value
 	}
-	b.request.headers[key] = value
 	return b
 }
 
 func (b *requestBuilder) SetHeaders(headers map[string]string) *requestBuilder {
+	if len(headers) == 0 {
+		return b
+	}
+	if b.request.headers == nil {
+		b.request.headers = make(map[string]string, len(headers))
+	}
 	for key, value := range headers {
-		b.SetHeader(key, value)
+		if key != "" {
+			b.request.headers[key] = value
+		}
 	}
 	return b
 }

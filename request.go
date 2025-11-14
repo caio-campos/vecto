@@ -54,7 +54,7 @@ func (r *Request) SetParam(key string, value any) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.params == nil {
-		r.params = make(map[string]any)
+		r.params = make(map[string]any, 4)
 	}
 	r.params[key] = value
 	return r.refreshUrlUnsafe()
@@ -80,7 +80,7 @@ func (r *Request) SetHeader(key, value string) {
 
 func (r *Request) setHeaderUnsafe(key, value string) {
 	if r.headers == nil {
-		r.headers = make(map[string]string)
+		r.headers = make(map[string]string, 8)
 	}
 	r.headers[key] = value
 }
@@ -168,6 +168,10 @@ func (r *Request) Headers() map[string]string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	if len(r.headers) == 0 {
+		return nil
+	}
+
 	headersCopy := make(map[string]string, len(r.headers))
 	for k, v := range r.headers {
 		headersCopy[k] = v
@@ -179,6 +183,10 @@ func (r *Request) Headers() map[string]string {
 func (r *Request) Params() map[string]any {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
+	if len(r.params) == 0 {
+		return nil
+	}
 
 	paramsCopy := make(map[string]any, len(r.params))
 	for k, v := range r.params {

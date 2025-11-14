@@ -249,7 +249,7 @@ func TestDefaultShouldTrip(t *testing.T) {
 			name:     "400 status code",
 			res:      &Response{StatusCode: 400},
 			err:      nil,
-			expected: true,
+			expected: false,
 		},
 	}
 

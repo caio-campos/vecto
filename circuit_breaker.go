@@ -130,7 +130,7 @@ func NewCircuitBreaker(key string, config CircuitBreakerConfig) *CircuitBreaker 
 		config:          config,
 		key:             key,
 		state:           StateClosed,
-		failures:        make([]failureRecord, 0),
+		failures:        make([]failureRecord, 0, 10),
 		stateChangeTime: time.Now(),
 	}
 
@@ -388,7 +388,7 @@ type CircuitBreakerManager struct {
 // NewCircuitBreakerManager creates a new circuit breaker manager.
 func NewCircuitBreakerManager(defaultConfig CircuitBreakerConfig, logger Logger) *CircuitBreakerManager {
 	return &CircuitBreakerManager{
-		breakers:      make(map[string]*CircuitBreaker),
+		breakers:      make(map[string]*CircuitBreaker, 16),
 		defaultConfig: defaultConfig,
 		logger:        logger,
 	}
@@ -444,5 +444,5 @@ func (m *CircuitBreakerManager) Remove(key string) {
 func (m *CircuitBreakerManager) Clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.breakers = make(map[string]*CircuitBreaker)
+	m.breakers = make(map[string]*CircuitBreaker, 16)
 }

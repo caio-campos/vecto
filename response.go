@@ -24,8 +24,11 @@ func (r *Response) deepCopy() *Response {
 		return nil
 	}
 
-	dataCopy := make([]byte, len(r.Data))
-	copy(dataCopy, r.Data)
+	var dataCopy []byte
+	if len(r.Data) > 0 {
+		dataCopy = make([]byte, len(r.Data))
+		copy(dataCopy, r.Data)
+	}
 
 	var rawReqCopy *http.Request
 	if r.RawRequest != nil {

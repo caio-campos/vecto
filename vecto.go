@@ -489,7 +489,7 @@ func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions
 		reqOptions = *options
 	}
 
-	fullUrlStr := fmt.Sprintf("%s%s", v.config.BaseURL, urlStr)
+	fullUrlStr := v.config.BaseURL + urlStr
 
 	transform := ApplicationJsonReqTransformer
 	if v.config.RequestTransform != nil {
@@ -624,7 +624,7 @@ func (v *Vecto) normalizeURL(req *Request) string {
 		return path
 	}
 
-	return fmt.Sprintf("%s://%s%s", scheme, host, path)
+	return scheme + "://" + host + path
 }
 
 func (v *Vecto) getCircuitBreakerKey(req *Request) string {
@@ -639,7 +639,7 @@ func (v *Vecto) getCircuitBreakerKey(req *Request) string {
 		return host
 	}
 
-	return fmt.Sprintf("%s://%s", scheme, host)
+	return scheme + "://" + host
 }
 
 func (v *Vecto) setHTTPClient() (err error) {
