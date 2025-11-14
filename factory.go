@@ -3,6 +3,7 @@ package vecto
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -61,12 +62,12 @@ func (h *httpClientFactory) getTransportConfig() (transport *http.Transport, err
 	for _, certConfig := range h.config.Certificates {
 		ok := caCertPool.AppendCertsFromPEM([]byte(certConfig.Cert))
 		if !ok {
-			return transport, err
+			return transport, fmt.Errorf("failed to append certificate to pool")
 		}
 
 		cert, err := tls.X509KeyPair([]byte(certConfig.Cert), []byte(certConfig.Key))
 		if err != nil {
-			return transport, err
+			return transport, fmt.Errorf("failed to load X509 key pair: %w", err)
 		}
 
 		certificates = append(certificates, cert)
@@ -75,7 +76,7 @@ func (h *httpClientFactory) getTransportConfig() (transport *http.Transport, err
 	tlsConfig := &tls.Config{
 		RootCAs:            caCertPool,
 		Certificates:       certificates,
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: h.config.InsecureSkipVerify,
 	}
 
 	transport = &http.Transport{

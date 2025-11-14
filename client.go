@@ -2,7 +2,7 @@ package vecto
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 )
 
@@ -28,7 +28,7 @@ func (c *DefaultClient) Do(ctx context.Context, req Request) (res *Response, err
 
 	defer httpRes.Body.Close()
 
-	resBody, err := ioutil.ReadAll(httpRes.Body)
+	resBody, err := io.ReadAll(httpRes.Body)
 	if err != nil {
 		return res, err
 	}

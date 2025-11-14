@@ -20,14 +20,15 @@ type ValidateStatusFunc func(res *Response) bool
 type RequestCompletedCallback func(ev RequestCompletedEvent)
 
 type Config struct {
-	BaseURL          string
-	Timeout          time.Duration
-	Headers          map[string]string
-	Certificates     []CertificateConfig
-	HTTPTransport    *http.Transport
-	Adapter          AdapterFunc
-	RequestTransform RequestTransformFunc
-	ValidateStatus   ValidateStatusFunc
+	BaseURL            string
+	Timeout            time.Duration
+	Headers            map[string]string
+	Certificates       []CertificateConfig
+	HTTPTransport      *http.Transport
+	Adapter            AdapterFunc
+	RequestTransform   RequestTransformFunc
+	ValidateStatus     ValidateStatusFunc
+	InsecureSkipVerify bool
 }
 
 type Client interface {

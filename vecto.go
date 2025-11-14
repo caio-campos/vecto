@@ -111,7 +111,14 @@ func (v *Vecto) dispatchRequestCompleted(res *Response) {
 	}
 
 	for _, cb := range res.request.events.completed {
-		go cb(event)
+		go func(callback RequestCompletedCallback) {
+			defer func() {
+				if r := recover(); r != nil {
+					_ = fmt.Errorf("panic in request completed callback: %v", r)
+				}
+			}()
+			callback(event)
+		}(cb)
 	}
 }
 
