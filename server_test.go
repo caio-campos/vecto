@@ -60,7 +60,6 @@ func newHTTPTestServer() *httptest.Server {
 			if r.URL.Path == "/test/query" {
 				w.Header().Add("Content-Type", "application/json")
 
-				// Verifica se o parâmetro "added_param" está presente na query string
 				queryValues := r.URL.Query()
 				if queryValues.Get("added_param") == "1" {
 					w.WriteHeader(http.StatusOK)
@@ -78,23 +77,23 @@ func newHTTPTestServer() *httptest.Server {
 				return
 			}
 
-		if r.URL.Path == "/test/slow" {
-			time.Sleep(time.Second * 6)
-			w.Header().Add("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			return
-		}
+			if r.URL.Path == "/test/slow" {
+				time.Sleep(time.Second * 6)
+				w.Header().Add("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 
-		if r.URL.Path == "/test/large-response" {
-			w.Header().Add("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			maxSize := 100 * 1024 * 1024
-			data := strings.Repeat("x", maxSize+1024*1024)
-			w.Write([]byte(data))
-			return
-		}
+			if r.URL.Path == "/test/large-response" {
+				w.Header().Add("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				maxSize := 100 * 1024 * 1024
+				data := strings.Repeat("x", maxSize+1024*1024)
+				w.Write([]byte(data))
+				return
+			}
 
-		w.WriteHeader(http.StatusNotFound)
+			w.WriteHeader(http.StatusNotFound)
 		}),
 	)
 }

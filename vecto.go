@@ -223,7 +223,6 @@ func (v *Vecto) Options(ctx context.Context, url string, options *RequestOptions
 func (v *Vecto) Request(ctx context.Context, url string, method string, options *RequestOptions) (res *Response, err error) {
 	startTime := time.Now()
 
-	// Validação de context nil
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -289,7 +288,6 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 		return nil, fmt.Errorf("response interceptor failed: %w", err)
 	}
 
-	// Dispatch com context original preservado
 	v.dispatchRequestCompleted(ctx, resultRes)
 
 	v.recordMetrics(ctx, request, resultRes, time.Since(startTime), nil)
@@ -297,9 +295,7 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 	return resultRes, nil
 }
 
-// dispatchRequestCompleted executa callbacks em goroutines com timeout e rate limiting
 func (v *Vecto) dispatchRequestCompleted(ctx context.Context, res *Response) {
-	// Deep copy da Response para evitar race conditions
 	responseCopy := res.deepCopy()
 
 	event := RequestCompletedEvent{
@@ -374,7 +370,6 @@ func (v *Vecto) dispatchRequestCompleted(ctx context.Context, res *Response) {
 
 func (v *Vecto) interceptRequest(ctx context.Context, req *Request) (resultReq *Request, err error) {
 	resultReq = req
-	// Usa getAll() thread-safe em vez de acessar slice diretamente
 	for _, interceptor := range v.Interceptors.Request.getAll() {
 		resultReq, err = interceptor(ctx, resultReq)
 		if err != nil {
@@ -391,7 +386,6 @@ func (v *Vecto) interceptResponse(ctx context.Context, res *Response) (resultRes
 	}
 
 	resultRes = res
-	// Usa getAll() thread-safe em vez de acessar slice diretamente
 	for _, interceptor := range v.Interceptors.Response.getAll() {
 		resultRes, err = interceptor(ctx, resultRes)
 		if err != nil {

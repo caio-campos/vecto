@@ -30,7 +30,6 @@ type Request struct {
 }
 
 // Completed adds a callback function that is triggered when the request completes.
-// This function allows external code to handle events or perform actions after the request has finished processing.
 func (r *Request) Completed(cb RequestCompletedCallback) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -38,7 +37,6 @@ func (r *Request) Completed(cb RequestCompletedCallback) {
 }
 
 // RawRequest returns the underlying *http.Request object.
-// It provides access to the raw HTTP request used for making the network call, which might be needed for advanced customizations.
 func (r *Request) RawRequest() *http.Request {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -69,7 +67,6 @@ func (r *Request) SetHeaders(headers map[string]string) {
 }
 
 // SetHeader adds or updates a header for the request.
-// This allows custom headers to be set, such as authentication tokens or content types.
 func (r *Request) SetHeader(key, value string) {
 	if key == "" {
 		return
@@ -87,7 +84,6 @@ func (r *Request) setHeaderUnsafe(key, value string) {
 }
 
 // refreshUrl rebuilds the request URL based on the base path and current query parameters.
-// It also updates the raw HTTP request object to ensure it reflects the latest URL.
 // Returns an error if the URL cannot be constructed.
 func (r *Request) refreshUrl() error {
 	r.mu.Lock()
@@ -116,16 +112,14 @@ func (r *Request) refreshUrlUnsafe() error {
 	return nil
 }
 
-// BaseUrl returns the base path of the request, which is the base URL without query parameters.
-// This can be useful for logging or debugging the endpoint being accessed.
+// BaseUrl returns the base URL without query parameters.
 func (r *Request) BaseUrl() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.baseURL
 }
 
-// FullUrl returns the full request URL, including any query parameters.
-// This represents the actual URL that will be used for the HTTP request.
+// FullUrl returns the full request URL including query parameters.
 func (r *Request) FullUrl() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -133,7 +127,6 @@ func (r *Request) FullUrl() string {
 }
 
 // Host returns the host component of the request URL.
-// This includes the domain or IP address where the request is being sent.
 func (r *Request) Host() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -141,15 +134,13 @@ func (r *Request) Host() string {
 }
 
 // Scheme returns the scheme of the request URL (e.g., "http" or "https").
-// It indicates the protocol being used for the request.
 func (r *Request) Scheme() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.scheme
 }
 
-// Path returns the path component of the request URL.
-// It specifies the resource location on the server without including query parameters.
+// Path returns the path component of the request URL without query parameters.
 func (r *Request) Path() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -157,24 +148,20 @@ func (r *Request) Path() string {
 }
 
 // Method returns the HTTP method used for the request (e.g., "GET", "POST").
-// This indicates the type of action being performed on the specified resource.
 func (r *Request) Method() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.method
 }
 
-// Data returns the body of the request, typically used for POST and PUT requests.
-// It can be any type of data that will be serialized and sent as the request payload.
+// Data returns the body of the request.
 func (r *Request) Data() interface{} {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.data
 }
 
-// Headers returns the headers set for the request.
-// It provides access to all HTTP headers that will be sent with the request.
-// Returns a copy of the headers map to prevent external modifications.
+// Headers returns a copy of the headers set for the request.
 func (r *Request) Headers() map[string]string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -186,9 +173,7 @@ func (r *Request) Headers() map[string]string {
 	return headersCopy
 }
 
-// Params returns the current set of query parameters for the request.
-// It allows access to the key-value pairs that will be included in the request URL.
-// Returns a copy of the params map to prevent external modifications.
+// Params returns a copy of the query parameters for the request.
 func (r *Request) Params() map[string]any {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

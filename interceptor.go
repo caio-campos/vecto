@@ -28,7 +28,6 @@ func (c *reqInterceptorCollection) getAll() []ReqInterceptorFunc {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	
-	// Retorna cópia para evitar race conditions
 	result := make([]ReqInterceptorFunc, len(c.interceptors))
 	copy(result, c.interceptors)
 	return result
@@ -49,7 +48,6 @@ func (c *resInterceptorCollection) getAll() []ResInterceptorFunc {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	
-	// Retorna cópia para evitar race conditions
 	result := make([]ResInterceptorFunc, len(c.interceptors))
 	copy(result, c.interceptors)
 	return result

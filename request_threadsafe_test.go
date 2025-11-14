@@ -79,7 +79,6 @@ func TestRequestThreadSafety(t *testing.T) {
 
 		wg := sync.WaitGroup{}
 
-		// Writers
 		for i := 0; i < 50; i++ {
 			wg.Add(1)
 			go func(idx int) {
@@ -88,7 +87,6 @@ func TestRequestThreadSafety(t *testing.T) {
 			}(i)
 		}
 
-		// Readers
 		for i := 0; i < 50; i++ {
 			wg.Add(1)
 			go func() {
