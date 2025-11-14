@@ -153,22 +153,29 @@ func (v *Vecto) dispatchRequestCompleted(res *Response) {
 		response: res,
 	}
 
-	for _, cb := range res.request.events.completed {
-		go func(callback RequestCompletedCallback) {
+	requestUrl := res.request.FullUrl()
+	
+	res.request.mu.RLock()
+	callbacks := make([]RequestCompletedCallback, len(res.request.events.completed))
+	copy(callbacks, res.request.events.completed)
+	res.request.mu.RUnlock()
+
+	for _, cb := range callbacks {
+		go func(callback RequestCompletedCallback, url string) {
 			defer func() {
 				if r := recover(); r != nil {
 					v.logger.Error(context.Background(), "panic in request completed callback", map[string]interface{}{
 						"panic": fmt.Sprintf("%v", r),
-						"url":   res.request.FullUrl(),
+						"url":   url,
 					})
 				}
 			}()
 			callback(event)
-		}(cb)
+		}(cb, requestUrl)
 	}
 }
 
-func (v *Vecto) interceptRequest(ctx context.Context, req Request) (resultReq Request, err error) {
+func (v *Vecto) interceptRequest(ctx context.Context, req *Request) (resultReq *Request, err error) {
 	resultReq = req
 	for _, interceptor := range v.Interceptors.Request.interceptors {
 		resultReq, err = interceptor(ctx, resultReq)
@@ -196,7 +203,7 @@ func (v *Vecto) interceptResponse(ctx context.Context, res *Response) (resultRes
 	return resultRes, nil
 }
 
-func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions) (Request, error) {
+func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions) (*Request, error) {
 	reqOptions := RequestOptions{}
 	if options != nil {
 		reqOptions = *options
@@ -220,10 +227,10 @@ func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions
 
 	req, err := builder.Build()
 	if err != nil {
-		return Request{}, err
+		return nil, err
 	}
 
-	return *req, nil
+	return req, nil
 }
 
 func (v *Vecto) setHttpClient() (err error) {

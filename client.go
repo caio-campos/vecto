@@ -10,13 +10,11 @@ type DefaultClient struct {
 	client http.Client
 }
 
-func (c *DefaultClient) Do(ctx context.Context, req Request) (res *Response, err error) {
+func (c *DefaultClient) Do(ctx context.Context, req *Request) (res *Response, err error) {
 	httpReq, err := req.toHTTPRequest(ctx)
 	if err != nil {
 		return res, err
 	}
-
-	req.rawRequest = httpReq
 
 	httpRes, err := c.client.Do(httpReq)
 	if err != nil {

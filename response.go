@@ -9,7 +9,7 @@ import "net/http"
 type Response struct {
 	Data        []byte
 	StatusCode  int
-	request     Request
+	request     *Request
 	RawRequest  *http.Request
 	RawResponse *http.Response
 	success     bool

@@ -5,25 +5,25 @@ import (
 	"net/url"
 )
 
-func ApplicationJsonReqTransformer(req Request) (data []byte, err error) {
-	if req.data == nil || req.data == "" {
+func ApplicationJsonReqTransformer(req *Request) (data []byte, err error) {
+	reqData := req.Data()
+	if reqData == nil || reqData == "" {
 		return nil, nil
 	}
 
-	return json.Marshal(req.data)
+	return json.Marshal(reqData)
 }
 
-func FormEncodedReqTransformer(req Request) (data []byte, err error) {
-	if req.data == nil || req.data == "" {
+func FormEncodedReqTransformer(req *Request) (data []byte, err error) {
+	reqData := req.Data()
+	if reqData == nil || reqData == "" {
 		return nil, nil
 	}
 
 	paramsMap := make(map[string]string)
-	if req.data != nil {
-		dataMap, ok := req.data.(map[string]string)
-		if ok {
-			paramsMap = dataMap
-		}
+	dataMap, ok := reqData.(map[string]string)
+	if ok {
+		paramsMap = dataMap
 	}
 
 	formData := url.Values{}

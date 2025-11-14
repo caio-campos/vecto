@@ -2,7 +2,7 @@ package vecto
 
 import "context"
 
-type ReqInterceptorFunc func(ctx context.Context, req Request) (resultReq Request, err error)
+type ReqInterceptorFunc func(ctx context.Context, req *Request) (resultReq *Request, err error)
 type ResInterceptorFunc func(ctx context.Context, res *Response) (resultRes *Response, err error)
 
 type interceptorCollectionWrapper struct {

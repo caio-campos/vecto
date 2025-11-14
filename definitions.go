@@ -11,9 +11,9 @@ type CertificateConfig struct {
 	Key  string
 }
 
-type AdapterFunc func(req Request) (res *Response, err error)
+type AdapterFunc func(req *Request) (res *Response, err error)
 
-type RequestTransformFunc func(req Request) (data []byte, err error)
+type RequestTransformFunc func(req *Request) (data []byte, err error)
 
 type ValidateStatusFunc func(res *Response) bool
 
@@ -33,7 +33,7 @@ type Config struct {
 }
 
 type Client interface {
-	Do(ctx context.Context, req Request) (res *Response, err error)
+	Do(ctx context.Context, req *Request) (res *Response, err error)
 }
 
 type requestEvents struct {

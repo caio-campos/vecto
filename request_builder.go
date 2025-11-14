@@ -16,18 +16,24 @@ func newRequestBuilder(basePath, method string) *requestBuilder {
 }
 
 func (b *requestBuilder) SetHeader(key, value string) *requestBuilder {
+	if b.request.headers == nil {
+		b.request.headers = make(map[string]string)
+	}
 	b.request.headers[key] = value
 	return b
 }
 
 func (b *requestBuilder) SetHeaders(headers map[string]string) *requestBuilder {
 	for key, value := range headers {
-		b.request.headers[key] = value
+		b.SetHeader(key, value)
 	}
 	return b
 }
 
 func (b *requestBuilder) SetParam(key string, value any) *requestBuilder {
+	if b.request.params == nil {
+		b.request.params = make(map[string]any)
+	}
 	b.request.params[key] = value
 	return b
 }
