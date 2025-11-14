@@ -7,10 +7,10 @@ type requestBuilder struct {
 func newRequestBuilder(basePath, method string) *requestBuilder {
 	return &requestBuilder{
 		request: &Request{
-			basePath: basePath,
-			method:   method,
-			headers:  make(map[string]string),
-			params:   make(map[string]any),
+			baseURL: basePath,
+			method:  method,
+			headers: make(map[string]string),
+			params:  make(map[string]any),
 		},
 	}
 }
@@ -44,7 +44,7 @@ func (b *requestBuilder) SetData(data interface{}) *requestBuilder {
 }
 
 func (b *requestBuilder) SetTransform(transform RequestTransformFunc) *requestBuilder {
-	b.request.requestTransform = transform
+	b.request.transform = transform
 	return b
 }
 

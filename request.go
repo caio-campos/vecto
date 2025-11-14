@@ -13,19 +13,19 @@ import (
 // All public methods are protected by an internal mutex to ensure
 // thread-safe operations across multiple goroutines.
 type Request struct {
-	mu               sync.RWMutex
-	basePath         string
-	requestUrl       string
-	host             string
-	scheme           string
-	path             string
-	method           string
-	params           map[string]any
-	headers          map[string]string
-	data             interface{}
-	requestTransform RequestTransformFunc
-	rawRequest       *http.Request
-	events           requestEvents
+	mu        sync.RWMutex
+	baseURL   string
+	url       string
+	host      string
+	scheme    string
+	path      string
+	method    string
+	params    map[string]any
+	headers   map[string]string
+	data      interface{}
+	transform RequestTransformFunc
+	rawReq    *http.Request
+	events    requestEvents
 }
 
 // Completed adds a callback function that is triggered when the request completes.
@@ -41,7 +41,7 @@ func (r *Request) Completed(cb RequestCompletedCallback) {
 func (r *Request) RawRequest() *http.Request {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.rawRequest
+	return r.rawReq
 }
 
 // SetParam adds or updates a query parameter for the request.
@@ -90,22 +90,22 @@ func (r *Request) refreshUrl() error {
 }
 
 func (r *Request) refreshUrlUnsafe() error {
-	fullUrl, err := getUrlInstance(r.basePath, r.params)
+	fullUrl, err := getUrlInstance(r.baseURL, r.params)
 	if err != nil {
 		return err
 	}
 
-	r.requestUrl = fullUrl.String()
+	r.url = fullUrl.String()
 	r.host = fullUrl.Host
 	r.scheme = fullUrl.Scheme
 	r.path = fullUrl.Path
 
-	newRequest, err := http.NewRequest(r.method, r.requestUrl, bytes.NewReader([]byte{}))
+	newRequest, err := http.NewRequest(r.method, r.url, bytes.NewReader([]byte{}))
 	if err != nil {
 		return err
 	}
 
-	r.rawRequest = newRequest
+	r.rawReq = newRequest
 
 	return nil
 }
@@ -115,7 +115,7 @@ func (r *Request) refreshUrlUnsafe() error {
 func (r *Request) BaseUrl() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.basePath
+	return r.baseURL
 }
 
 // FullUrl returns the full request URL, including any query parameters.
@@ -123,7 +123,7 @@ func (r *Request) BaseUrl() string {
 func (r *Request) FullUrl() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.requestUrl
+	return r.url
 }
 
 // Host returns the host component of the request URL.
@@ -172,7 +172,7 @@ func (r *Request) Data() interface{} {
 func (r *Request) Headers() map[string]string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	headersCopy := make(map[string]string, len(r.headers))
 	for k, v := range r.headers {
 		headersCopy[k] = v
@@ -186,7 +186,7 @@ func (r *Request) Headers() map[string]string {
 func (r *Request) Params() map[string]any {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	paramsCopy := make(map[string]any, len(r.params))
 	for k, v := range r.params {
 		paramsCopy[k] = v
@@ -198,24 +198,24 @@ func (r *Request) toHTTPRequest(ctx context.Context) (*http.Request, error) {
 	var httpReqData []byte
 	var err error
 
-	if httpReqData, err = r.requestTransform(r); err != nil {
+	if httpReqData, err = r.transform(r); err != nil {
 		return nil, err
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	newRequest, err := http.NewRequest(r.method, r.requestUrl, bytes.NewReader(httpReqData))
+	newRequest, err := http.NewRequest(r.method, r.url, bytes.NewReader(httpReqData))
 	if err != nil {
 		return nil, err
 	}
 
 	newRequest = newRequest.WithContext(ctx)
-	r.rawRequest = newRequest
+	r.rawReq = newRequest
 
-	r.attachHeadersToHttpReqUnsafe(r.rawRequest)
+	r.attachHeadersToHttpReqUnsafe(r.rawReq)
 
-	return r.rawRequest, nil
+	return r.rawReq, nil
 }
 
 func (r *Request) attachHeadersToHttpReqUnsafe(httpReq *http.Request) {
