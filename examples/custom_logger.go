@@ -1,4 +1,9 @@
-package examples
+//go:build example_custom_logger
+// +build example_custom_logger
+
+// This is a standalone example program. Each example file has its own main function
+// and should be run individually: go run -tags example_custom_logger custom_logger.go
+package main
 
 import (
 	"context"
@@ -34,6 +39,10 @@ func (l *SimpleLogger) Error(ctx context.Context, msg string, fields map[string]
 
 func (l *SimpleLogger) IsNoop() bool {
 	return false
+}
+
+func main() {
+	ExampleWithLogger()
 }
 
 func ExampleWithLogger() {

@@ -73,6 +73,9 @@ type Config struct {
 	MaxConcurrentCallbacks int
 	CallbackTimeout        time.Duration
 	CircuitBreaker         *CircuitBreakerConfig
+	Retry                  *RetryConfig
+	EnableTrace            bool
+	DebugMode              bool
 }
 
 type Client interface {
@@ -96,4 +99,8 @@ type RequestOptions struct {
 	Headers          map[string]string
 	Params           map[string]any
 	RequestTransform RequestTransformFunc
+	MaxRetries       *int
+	PathParams       map[string]string
+	FormData         map[string]string
+	QueryStruct      interface{}
 }

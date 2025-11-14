@@ -17,6 +17,7 @@ type Response struct {
 	RawRequest  *http.Request
 	RawResponse *http.Response
 	success     bool
+	TraceInfo   *TraceInfo
 }
 
 func (r *Response) deepCopy() *Response {
@@ -63,6 +64,7 @@ func (r *Response) deepCopy() *Response {
 		RawResponse: rawResCopy,
 		request:     r.request,
 		success:     r.success,
+		TraceInfo:   r.TraceInfo,
 	}
 }
 

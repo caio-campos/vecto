@@ -1,4 +1,9 @@
-package examples
+//go:build example_circuit_breaker
+// +build example_circuit_breaker
+
+// This is a standalone example program. Each example file has its own main function
+// and should be run individually: go run -tags example_circuit_breaker circuit_breaker.go
+package main
 
 import (
 	"context"
@@ -8,6 +13,10 @@ import (
 
 	"github.com/caio-campos/vecto"
 )
+
+func main() {
+	ExampleCircuitBreaker()
+}
 
 func ExampleCircuitBreaker() {
 	cbConfig := vecto.DefaultCircuitBreakerConfig()
@@ -32,7 +41,7 @@ func ExampleCircuitBreaker() {
 	}
 
 	config := vecto.Config{
-		BaseURL: "https://httpbin.org",
+		BaseURL:        "https://httpbin.org",
 		CircuitBreaker: &cbConfig,
 	}
 
@@ -75,4 +84,3 @@ func ExampleCircuitBreaker() {
 		time.Sleep(500 * time.Millisecond)
 	}
 }
-

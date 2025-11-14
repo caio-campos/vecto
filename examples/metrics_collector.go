@@ -1,4 +1,9 @@
-package examples
+//go:build example_metrics_collector
+// +build example_metrics_collector
+
+// This is a standalone example program. Each example file has its own main function
+// and should be run individually: go run -tags example_metrics_collector metrics_collector.go
+package main
 
 import (
 	"context"
@@ -84,15 +89,19 @@ func (n *NoOpMetricsCollector) RecordRequest(ctx context.Context, metrics vecto.
 	// No-op: do nothing
 }
 
+func main() {
+	ExampleMetricsCollectorUsage()
+}
+
 // ExampleUsage demonstrates how to use MetricsCollector with vecto client
 func ExampleMetricsCollectorUsage() {
 	// Example usage
 	collector := NewPrometheusMetricsCollector()
 
 	client, err := vecto.New(vecto.Config{
-		BaseURL:         "https://api.example.com",
+		BaseURL:          "https://api.example.com",
 		MetricsCollector: collector,
-		Timeout:         30 * time.Second,
+		Timeout:          30 * time.Second,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -107,4 +116,3 @@ func ExampleMetricsCollectorUsage() {
 
 	log.Printf("Response status: %d", res.StatusCode)
 }
-

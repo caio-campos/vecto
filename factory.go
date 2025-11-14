@@ -25,8 +25,9 @@ func newDefaultClient(vecto *Vecto) (client Client, err error) {
 	}
 
 	client = &DefaultClient{
-		client:            httpClient,
+		client:              httpClient,
 		maxResponseBodySize: vecto.config.MaxResponseBodySize,
+		enableTrace:         vecto.config.EnableTrace,
 	}
 
 	return client, nil

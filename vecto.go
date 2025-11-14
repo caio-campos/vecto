@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -178,6 +179,10 @@ func mergeConfig(provided, defaults Config) Config {
 		result.CircuitBreaker = provided.CircuitBreaker
 	}
 
+	if provided.Retry != nil {
+		result.Retry = provided.Retry
+	}
+
 	return result
 }
 
@@ -281,6 +286,8 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 	var cbKey string
 	var breaker *CircuitBreaker
 
+	retryConfig := v.getRetryConfig(options)
+
 	if v.circuitBreakerMgr != nil {
 		request.mu.RLock()
 		if request.cbKeyCached {
@@ -300,6 +307,9 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 		breaker = v.circuitBreakerMgr.GetOrCreate(cbKey, nil)
 
 		res, err = breaker.Execute(ctx, func() (*Response, error) {
+			if retryConfig != nil && shouldUseRetry(breaker) {
+				return v.executeWithRetry(ctx, request, retryConfig)
+			}
 			return v.client.Do(ctx, request)
 		})
 
@@ -329,7 +339,12 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 			return nil, fmt.Errorf("http request failed: %w", err)
 		}
 	} else {
-		res, err = v.client.Do(ctx, request)
+		if retryConfig != nil {
+			res, err = v.executeWithRetry(ctx, request, retryConfig)
+		} else {
+			res, err = v.client.Do(ctx, request)
+		}
+
 		if err != nil {
 			duration := time.Since(startTime)
 			if !v.logger.IsNoop() {
@@ -373,6 +388,10 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 		}
 		v.recordMetrics(ctx, request, res, duration, err)
 		return nil, fmt.Errorf("response interceptor failed: %w", err)
+	}
+
+	if v.config.DebugMode {
+		v.writeDebugOutput(request, resultRes)
 	}
 
 	v.dispatchRequestCompleted(ctx, resultRes)
@@ -491,6 +510,10 @@ func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions
 
 	fullUrlStr := v.config.BaseURL + urlStr
 
+	if reqOptions.PathParams != nil && len(reqOptions.PathParams) > 0 {
+		fullUrlStr = replacePathParams(fullUrlStr, reqOptions.PathParams)
+	}
+
 	transform := ApplicationJsonReqTransformer
 	if v.config.RequestTransform != nil {
 		transform = v.config.RequestTransform
@@ -499,11 +522,35 @@ func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions
 		transform = reqOptions.RequestTransform
 	}
 
+	data := reqOptions.Data
+	headers := make(map[string]string)
+
+	for k, v := range v.config.Headers {
+		headers[k] = v
+	}
+	for k, v := range reqOptions.Headers {
+		headers[k] = v
+	}
+
+	if reqOptions.FormData != nil && len(reqOptions.FormData) > 0 {
+		data = encodeFormData(reqOptions.FormData)
+		headers["Content-Type"] = "application/x-www-form-urlencoded"
+	}
+
 	builder := newRequestBuilder(fullUrlStr, method).
-		SetHeaders(v.config.Headers).
-		SetHeaders(reqOptions.Headers).
-		SetData(reqOptions.Data).
+		SetHeaders(headers).
+		SetData(data).
 		SetTransform(transform)
+
+	if reqOptions.QueryStruct != nil {
+		params, err := structToQueryParams(reqOptions.QueryStruct)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse query struct: %w", err)
+		}
+		for key, value := range params {
+			builder.SetParam(key, value)
+		}
+	}
 
 	for key, value := range reqOptions.Params {
 		builder.SetParam(key, value)
@@ -651,4 +698,93 @@ func (v *Vecto) setHTTPClient() (err error) {
 	v.client = client
 
 	return nil
+}
+
+func (v *Vecto) getRetryConfig(options *RequestOptions) *RetryConfig {
+	if v.config.Retry == nil {
+		return nil
+	}
+
+	config := *v.config.Retry
+
+	if options != nil && options.MaxRetries != nil {
+		config.MaxAttempts = *options.MaxRetries
+	}
+
+	return &config
+}
+
+func shouldUseRetry(breaker *CircuitBreaker) bool {
+	if breaker == nil {
+		return true
+	}
+
+	state := breaker.GetState()
+	return state != StateOpen
+}
+
+func (v *Vecto) writeDebugOutput(req *Request, res *Response) {
+	if req == nil || res == nil {
+		return
+	}
+
+	var trace *TraceInfo
+	if v.config.EnableTrace && res.TraceInfo != nil {
+		trace = res.TraceInfo
+	}
+
+	writer := v.logger
+	if !writer.IsNoop() {
+		debugStr := formatDebugInfo(req, res, trace)
+		ctx := context.Background()
+		v.logger.Debug(ctx, debugStr, nil)
+	}
+}
+
+func formatDebugInfo(req *Request, res *Response, trace *TraceInfo) string {
+	var b strings.Builder
+
+	b.WriteString("\n=== DEBUG INFO ===\n")
+	b.WriteString(fmt.Sprintf("Request: %s %s\n", req.Method(), req.FullUrl()))
+
+	if headers := req.Headers(); len(headers) > 0 {
+		b.WriteString("\nRequest Headers:\n")
+		for key, value := range headers {
+			b.WriteString(fmt.Sprintf("  %s: %s\n", key, value))
+		}
+	}
+
+	if req.Data() != nil {
+		b.WriteString(fmt.Sprintf("\nRequest Body:\n  %v\n", req.Data()))
+	}
+
+	if res != nil {
+		b.WriteString(fmt.Sprintf("\nResponse Status: %d\n", res.StatusCode))
+
+		if headers := res.Headers(); len(headers) > 0 {
+			b.WriteString("\nResponse Headers:\n")
+			for key, values := range headers {
+				for _, value := range values {
+					b.WriteString(fmt.Sprintf("  %s: %s\n", key, value))
+				}
+			}
+		}
+
+		if len(res.Data) > 0 {
+			bodyPreview := string(res.Data)
+			if len(bodyPreview) > 500 {
+				bodyPreview = bodyPreview[:500] + "... (truncated)"
+			}
+			b.WriteString(fmt.Sprintf("\nResponse Body:\n%s\n", bodyPreview))
+		}
+	}
+
+	if trace != nil {
+		b.WriteString(fmt.Sprintf("\n%s", trace.String()))
+	}
+
+	b.WriteString(fmt.Sprintf("\nCurl Equivalent:\n%s\n", req.ToCurl()))
+	b.WriteString("==================\n")
+
+	return b.String()
 }
