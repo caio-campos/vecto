@@ -143,7 +143,9 @@ func TestReqInterceptorAddQueryParam(t *testing.T) {
 
 	// Adiciona um interceptor que adiciona um query param "added_param=1"
 	vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
-		req.SetParam("added_param", "1")
+		if err := req.SetParam("added_param", "1"); err != nil {
+			return req, err
+		}
 		return req, nil
 	})
 

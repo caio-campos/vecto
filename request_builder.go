@@ -2,6 +2,7 @@ package vecto
 
 type requestBuilder struct {
 	request *Request
+	err     error
 }
 
 func newRequestBuilder(basePath, method string) *requestBuilder {
@@ -31,10 +32,13 @@ func (b *requestBuilder) SetHeaders(headers map[string]string) *requestBuilder {
 }
 
 func (b *requestBuilder) SetParam(key string, value any) *requestBuilder {
-	if b.request.params == nil {
-		b.request.params = make(map[string]any)
+	if b.err != nil {
+		return b
 	}
-	b.request.params[key] = value
+
+	if err := b.request.SetParam(key, value); err != nil {
+		b.err = err
+	}
 	return b
 }
 
@@ -49,6 +53,10 @@ func (b *requestBuilder) SetTransform(transform RequestTransformFunc) *requestBu
 }
 
 func (b *requestBuilder) Build() (*Request, error) {
+	if b.err != nil {
+		return nil, b.err
+	}
+
 	err := b.request.refreshUrl()
 	if err != nil {
 		return nil, err

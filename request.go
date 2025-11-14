@@ -44,17 +44,16 @@ func (r *Request) RawRequest() *http.Request {
 	return r.rawReq
 }
 
-// SetParam adds or updates a query parameter for the request.
-// The key-value pair provided is added to the list of query parameters,
-// and the URL is refreshed to include the updated parameters.
-func (r *Request) SetParam(key string, value any) {
+// SetParam adds or updates a query parameter for the request and returns
+// an error if the resulting URL cannot be constructed.
+func (r *Request) SetParam(key string, value any) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.params == nil {
 		r.params = make(map[string]any)
 	}
 	r.params[key] = value
-	r.refreshUrlUnsafe()
+	return r.refreshUrlUnsafe()
 }
 
 func (r *Request) SetHeaders(headers map[string]string) {

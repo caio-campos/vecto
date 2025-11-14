@@ -2,6 +2,7 @@ package vecto
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"testing"
 
@@ -110,4 +111,78 @@ func TestRequestTimeoutConfiguration(t *testing.T) {
 	res, err := vecto.Post(context.Background(), "/test/slow", nil)
 	assert.NotNil(t, err)
 	assert.Nil(t, res)
+}
+
+func TestConfigHeaderIsolation(t *testing.T) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	sharedHeaders := map[string]string{
+		"x-shared": "value",
+	}
+
+	first, err := New(Config{
+		BaseURL: srv.URL,
+		Headers: sharedHeaders,
+	})
+	assert.NoError(t, err)
+
+	sharedHeaders["x-shared"] = "mutated"
+
+	second, err := New(Config{
+		BaseURL: srv.URL,
+	})
+	assert.NoError(t, err)
+
+	first.config.Headers["x-first"] = "value"
+
+	_, presentInSecond := second.config.Headers["x-first"]
+	assert.Equal(t, "value", first.config.Headers["x-shared"])
+	assert.False(t, presentInSecond)
+
+	_, presentInDefault := defaultConfig.Headers["x-first"]
+	assert.False(t, presentInDefault)
+}
+
+func TestRequestTransformPrecedence(t *testing.T) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	configTransform := func(req *Request) ([]byte, error) {
+		return []byte("config"), nil
+	}
+
+	requestTransform := func(req *Request) ([]byte, error) {
+		return []byte("request"), nil
+	}
+
+	vecto, err := New(Config{
+		BaseURL:          srv.URL,
+		RequestTransform: configTransform,
+	})
+	assert.NoError(t, err)
+
+	req, err := vecto.newRequest("/test/methods", http.MethodPost, &RequestOptions{})
+	assert.NoError(t, err)
+
+	httpReq, err := req.toHTTPRequest(context.Background())
+	assert.NoError(t, err)
+	defer httpReq.Body.Close()
+
+	body, err := io.ReadAll(httpReq.Body)
+	assert.NoError(t, err)
+	assert.Equal(t, "config", string(body))
+
+	reqWithOverride, err := vecto.newRequest("/test/methods", http.MethodPost, &RequestOptions{
+		RequestTransform: requestTransform,
+	})
+	assert.NoError(t, err)
+
+	httpReqOverride, err := reqWithOverride.toHTTPRequest(context.Background())
+	assert.NoError(t, err)
+	defer httpReqOverride.Body.Close()
+
+	overrideBody, err := io.ReadAll(httpReqOverride.Body)
+	assert.NoError(t, err)
+	assert.Equal(t, "request", string(overrideBody))
 }

@@ -34,9 +34,12 @@ func newHttpClientFactory(config Config) httpClientFactory {
 }
 
 func (h *httpClientFactory) make() (client http.Client, err error) {
-	transport, err := h.getTransportConfig()
-	if err != nil {
-		return client, err
+	transport := h.config.HTTPTransport
+	if transport == nil {
+		transport, err = h.getTransportConfig()
+		if err != nil {
+			return client, err
+		}
 	}
 
 	client = http.Client{
@@ -56,7 +59,7 @@ func (h *httpClientFactory) getTransportConfig() (transport *http.Transport, err
 		return transport, err
 	}
 
-	certificates := make([]tls.Certificate, len(h.config.Certificates))
+	certificates := make([]tls.Certificate, 0, len(h.config.Certificates))
 	caCertPool := x509.NewCertPool()
 
 	for _, certConfig := range h.config.Certificates {

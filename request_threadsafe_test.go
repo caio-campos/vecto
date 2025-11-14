@@ -2,6 +2,7 @@ package vecto
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"sync"
 	"testing"
@@ -47,15 +48,23 @@ func TestRequestThreadSafety(t *testing.T) {
 		initialHeaders := len(req.Headers())
 
 		wg := sync.WaitGroup{}
+		errCh := make(chan error, 200)
 		for i := 0; i < 100; i++ {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
 				req.SetHeader("x-thread-"+strconv.Itoa(idx), strconv.Itoa(idx))
-				req.SetParam("param-"+strconv.Itoa(idx), idx)
+				if err := req.SetParam("param-"+strconv.Itoa(idx), idx); err != nil {
+					errCh <- err
+				}
 			}(i)
 		}
 		wg.Wait()
+		close(errCh)
+
+		for err := range errCh {
+			assert.NoError(t, err)
+		}
 
 		headers := req.Headers()
 		params := req.Params()
@@ -95,6 +104,7 @@ func TestRequestThreadSafety(t *testing.T) {
 
 	t.Run("concurrent requests", func(t *testing.T) {
 		wg := sync.WaitGroup{}
+		errCh := make(chan error, 200)
 
 		for i := 0; i < 100; i++ {
 			wg.Add(1)
@@ -106,16 +116,32 @@ func TestRequestThreadSafety(t *testing.T) {
 						"x-thread": strconv.Itoa(idx),
 					},
 				})
-				assert.NoError(t, err)
+				if err != nil {
+					errCh <- err
+					return
+				}
 
-				req.SetParam("thread_id", idx)
+				if err := req.SetParam("thread_id", idx); err != nil {
+					errCh <- err
+					return
+				}
 
 				res, err := vecto.client.Do(context.Background(), req)
-				assert.NoError(t, err)
-				assert.Equal(t, 200, res.StatusCode)
+				if err != nil {
+					errCh <- err
+					return
+				}
+				if res.StatusCode != 200 {
+					errCh <- fmt.Errorf("unexpected status: %d", res.StatusCode)
+				}
 			}(i)
 		}
 
 		wg.Wait()
+		close(errCh)
+
+		for err := range errCh {
+			assert.NoError(t, err)
+		}
 	})
 }

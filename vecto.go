@@ -56,7 +56,18 @@ func New(config Config) (v *Vecto, err error) {
 }
 
 func mergeConfig(provided, defaults Config) Config {
-	result := defaults
+	result := Config{
+		BaseURL:            defaults.BaseURL,
+		Timeout:            defaults.Timeout,
+		Headers:            cloneHeaders(defaults.Headers),
+		Certificates:       cloneCertificates(defaults.Certificates),
+		HTTPTransport:      defaults.HTTPTransport,
+		Adapter:            defaults.Adapter,
+		RequestTransform:   defaults.RequestTransform,
+		ValidateStatus:     defaults.ValidateStatus,
+		InsecureSkipVerify: defaults.InsecureSkipVerify,
+		Logger:             defaults.Logger,
+	}
 
 	if provided.BaseURL != "" {
 		result.BaseURL = provided.BaseURL
@@ -66,17 +77,17 @@ func mergeConfig(provided, defaults Config) Config {
 		result.Timeout = provided.Timeout
 	}
 
-	if provided.Headers != nil {
+	if len(provided.Headers) > 0 {
 		if result.Headers == nil {
-			result.Headers = make(map[string]string)
+			result.Headers = make(map[string]string, len(provided.Headers))
 		}
 		for k, v := range provided.Headers {
 			result.Headers[k] = v
 		}
 	}
 
-	if provided.Certificates != nil {
-		result.Certificates = provided.Certificates
+	if len(provided.Certificates) > 0 {
+		result.Certificates = cloneCertificates(provided.Certificates)
 	}
 
 	if provided.HTTPTransport != nil {
@@ -100,6 +111,30 @@ func mergeConfig(provided, defaults Config) Config {
 	if provided.Logger != nil {
 		result.Logger = provided.Logger
 	}
+
+	return result
+}
+
+func cloneHeaders(headers map[string]string) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	result := make(map[string]string, len(headers))
+	for k, v := range headers {
+		result[k] = v
+	}
+
+	return result
+}
+
+func cloneCertificates(certificates []CertificateConfig) []CertificateConfig {
+	if len(certificates) == 0 {
+		return nil
+	}
+
+	result := make([]CertificateConfig, len(certificates))
+	copy(result, certificates)
 
 	return result
 }
@@ -256,15 +291,19 @@ func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions
 
 	fullUrlStr := fmt.Sprintf("%s%s", v.config.BaseURL, urlStr)
 
+	transform := ApplicationJsonReqTransformer
+	if v.config.RequestTransform != nil {
+		transform = v.config.RequestTransform
+	}
+	if reqOptions.RequestTransform != nil {
+		transform = reqOptions.RequestTransform
+	}
+
 	builder := newRequestBuilder(fullUrlStr, method).
 		SetHeaders(v.config.Headers).
 		SetHeaders(reqOptions.Headers).
 		SetData(reqOptions.Data).
-		SetTransform(ApplicationJsonReqTransformer)
-
-	if reqOptions.RequestTransform != nil {
-		builder.SetTransform(reqOptions.RequestTransform)
-	}
+		SetTransform(transform)
 
 	for key, value := range reqOptions.Params {
 		builder.SetParam(key, value)
