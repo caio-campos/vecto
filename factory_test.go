@@ -16,11 +16,29 @@ func TestHttpClientFactoryCustomTransport(t *testing.T) {
 		HTTPTransport: customTransport,
 	}
 
-	factory := newHttpClientFactory(config)
+	factory := newHTTPClientFactory(config)
 	client, err := factory.make()
 
 	assert.NoError(t, err)
 	assert.Equal(t, customTransport, client.Transport)
 	assert.Equal(t, config.Timeout, client.Timeout)
+}
+
+func TestHttpClientFactoryInvalidCertificate(t *testing.T) {
+	config := Config{
+		Timeout: 5 * time.Second,
+		Certificates: []CertificateConfig{
+			{
+				Cert: "invalid-cert",
+				Key:  "invalid-key",
+			},
+		},
+	}
+
+	factory := newHTTPClientFactory(config)
+	_, err := factory.make()
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to")
 }
 

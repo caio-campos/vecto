@@ -32,9 +32,16 @@ var defaultConfig = Config{
 
 		return res.StatusCode >= 200 && res.StatusCode < 300
 	},
+	MaxResponseBodySize:    100 * 1024 * 1024,
+	MaxConcurrentCallbacks: 100,
+	CallbackTimeout:        30 * time.Second,
 }
 
 func New(config Config) (v *Vecto, err error) {
+	if err := validateConfig(config); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
 	mergedConfig := mergeConfig(config, defaultConfig)
 
 	instance := Vecto{
@@ -47,7 +54,7 @@ func New(config Config) (v *Vecto, err error) {
 		instance.logger = mergedConfig.Logger
 	}
 
-	err = instance.setHttpClient()
+	err = instance.setHTTPClient()
 	if err != nil {
 		return nil, err
 	}
@@ -55,18 +62,47 @@ func New(config Config) (v *Vecto, err error) {
 	return &instance, nil
 }
 
+func validateConfig(config Config) error {
+	if config.Timeout < 0 {
+		return fmt.Errorf("timeout cannot be negative")
+	}
+
+	if config.MaxResponseBodySize < 0 {
+		return fmt.Errorf("max response body size cannot be negative")
+	}
+
+	if config.MaxConcurrentCallbacks < 0 {
+		return fmt.Errorf("max concurrent callbacks cannot be negative")
+	}
+
+	if config.CallbackTimeout < 0 {
+		return fmt.Errorf("callback timeout cannot be negative")
+	}
+
+	if config.BaseURL != "" {
+		if _, err := http.NewRequest("GET", config.BaseURL, nil); err != nil {
+			return fmt.Errorf("invalid base URL: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func mergeConfig(provided, defaults Config) Config {
 	result := Config{
-		BaseURL:            defaults.BaseURL,
-		Timeout:            defaults.Timeout,
-		Headers:            cloneHeaders(defaults.Headers),
-		Certificates:       cloneCertificates(defaults.Certificates),
-		HTTPTransport:      defaults.HTTPTransport,
-		Adapter:            defaults.Adapter,
-		RequestTransform:   defaults.RequestTransform,
-		ValidateStatus:     defaults.ValidateStatus,
-		InsecureSkipVerify: defaults.InsecureSkipVerify,
-		Logger:             defaults.Logger,
+		BaseURL:                defaults.BaseURL,
+		Timeout:                defaults.Timeout,
+		Headers:                cloneHeaders(defaults.Headers),
+		Certificates:           cloneCertificates(defaults.Certificates),
+		HTTPTransport:          defaults.HTTPTransport,
+		Adapter:                defaults.Adapter,
+		RequestTransform:       defaults.RequestTransform,
+		ValidateStatus:         defaults.ValidateStatus,
+		InsecureSkipVerify:     defaults.InsecureSkipVerify,
+		Logger:                 defaults.Logger,
+		MaxResponseBodySize:    defaults.MaxResponseBodySize,
+		MaxConcurrentCallbacks: defaults.MaxConcurrentCallbacks,
+		CallbackTimeout:        defaults.CallbackTimeout,
 	}
 
 	if provided.BaseURL != "" {
@@ -110,6 +146,18 @@ func mergeConfig(provided, defaults Config) Config {
 
 	if provided.Logger != nil {
 		result.Logger = provided.Logger
+	}
+
+	if provided.MaxResponseBodySize > 0 {
+		result.MaxResponseBodySize = provided.MaxResponseBodySize
+	}
+
+	if provided.MaxConcurrentCallbacks > 0 {
+		result.MaxConcurrentCallbacks = provided.MaxConcurrentCallbacks
+	}
+
+	if provided.CallbackTimeout > 0 {
+		result.CallbackTimeout = provided.CallbackTimeout
 	}
 
 	return result
@@ -238,7 +286,7 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 func (v *Vecto) dispatchRequestCompleted(ctx context.Context, res *Response) {
 	// Deep copy da Response para evitar race conditions
 	responseCopy := res.deepCopy()
-	
+
 	event := RequestCompletedEvent{
 		response: responseCopy,
 	}
@@ -250,43 +298,59 @@ func (v *Vecto) dispatchRequestCompleted(ctx context.Context, res *Response) {
 	copy(callbacks, res.request.events.completed)
 	res.request.mu.RUnlock()
 
-	// Semáforo para limitar goroutines concorrentes (máximo 100)
-	sem := make(chan struct{}, 100)
+	maxConcurrent := v.config.MaxConcurrentCallbacks
+	if maxConcurrent <= 0 {
+		maxConcurrent = 100
+	}
+
+	callbackTimeout := v.config.CallbackTimeout
+	if callbackTimeout <= 0 {
+		callbackTimeout = 30 * time.Second
+	}
+
+	sem := make(chan struct{}, maxConcurrent)
 
 	for _, cb := range callbacks {
-		sem <- struct{}{} // Adquire slot
-		
+		select {
+		case <-ctx.Done():
+			v.logger.Warn(ctx, "context cancelled, skipping remaining callbacks", map[string]interface{}{
+				"url": requestUrl,
+			})
+			return
+		case sem <- struct{}{}:
+		}
+
 		go func(callback RequestCompletedCallback, url string) {
 			defer func() {
-				<-sem // Libera slot
+				<-sem
 				if r := recover(); r != nil {
-					// Usa contexto original para preservar trace
 					v.logger.Error(ctx, "panic in request completed callback", map[string]interface{}{
 						"panic": fmt.Sprintf("%v", r),
 						"url":   url,
 					})
 				}
 			}()
-			
-			// Timeout de 30 segundos para callbacks
-			callbackCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+
+			callbackCtx, cancel := context.WithTimeout(ctx, callbackTimeout)
 			defer cancel()
-			
-			// Canal para detectar se callback terminou
+
 			done := make(chan struct{})
 			go func() {
-				callback(event)
-				close(done)
+				defer close(done)
+				select {
+				case <-callbackCtx.Done():
+					return
+				default:
+					callback(event)
+				}
 			}()
-			
-			// Aguarda callback ou timeout
+
 			select {
 			case <-done:
-				// Callback completou normalmente
 			case <-callbackCtx.Done():
 				v.logger.Error(ctx, "callback timeout exceeded", map[string]interface{}{
 					"url":     url,
-					"timeout": "30s",
+					"timeout": callbackTimeout.String(),
 				})
 			}
 		}(cb, requestUrl)
@@ -357,7 +421,7 @@ func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions
 	return req, nil
 }
 
-func (v *Vecto) setHttpClient() (err error) {
+func (v *Vecto) setHTTPClient() (err error) {
 	client, err := newDefaultClient(v)
 	if err != nil {
 		return err

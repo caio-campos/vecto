@@ -88,7 +88,8 @@ func newHTTPTestServer() *httptest.Server {
 		if r.URL.Path == "/test/large-response" {
 			w.Header().Add("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			data := strings.Repeat("x", MaxResponseBodySize+1024*1024)
+			maxSize := 100 * 1024 * 1024
+			data := strings.Repeat("x", maxSize+1024*1024)
 			w.Write([]byte(data))
 			return
 		}

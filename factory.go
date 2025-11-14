@@ -13,7 +13,7 @@ type httpClientFactory struct {
 }
 
 func newDefaultClient(vecto *Vecto) (client Client, err error) {
-	httpClientFact := newHttpClientFactory(vecto.config)
+	httpClientFact := newHTTPClientFactory(vecto.config)
 
 	httpClient, err := httpClientFact.make()
 	if err != nil {
@@ -21,13 +21,14 @@ func newDefaultClient(vecto *Vecto) (client Client, err error) {
 	}
 
 	client = &DefaultClient{
-		client: httpClient,
+		client:            httpClient,
+		maxResponseBodySize: vecto.config.MaxResponseBodySize,
 	}
 
 	return client, nil
 }
 
-func newHttpClientFactory(config Config) httpClientFactory {
+func newHTTPClientFactory(config Config) httpClientFactory {
 	return httpClientFactory{
 		config,
 	}

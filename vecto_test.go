@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -213,4 +214,92 @@ func TestResponseBodySizeLimit(t *testing.T) {
 	_, err = vecto.Get(context.Background(), "/test/large-response", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "exceeded maximum size")
+}
+
+func TestConfigValidation(t *testing.T) {
+	t.Run("negative timeout", func(t *testing.T) {
+		_, err := New(Config{
+			Timeout: -1 * time.Second,
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "timeout cannot be negative")
+	})
+
+	t.Run("negative max response body size", func(t *testing.T) {
+		_, err := New(Config{
+			MaxResponseBodySize: -1,
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "max response body size cannot be negative")
+	})
+
+	t.Run("negative max concurrent callbacks", func(t *testing.T) {
+		_, err := New(Config{
+			MaxConcurrentCallbacks: -1,
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "max concurrent callbacks cannot be negative")
+	})
+
+	t.Run("negative callback timeout", func(t *testing.T) {
+		_, err := New(Config{
+			CallbackTimeout: -1 * time.Second,
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "callback timeout cannot be negative")
+	})
+
+	t.Run("invalid base URL", func(t *testing.T) {
+		_, err := New(Config{
+			BaseURL: "://invalid-url",
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid base URL")
+	})
+
+	t.Run("valid config", func(t *testing.T) {
+		srv := newHTTPTestServer()
+		defer srv.Close()
+
+		_, err := New(Config{
+			BaseURL:                srv.URL,
+			Timeout:                10 * time.Second,
+			MaxResponseBodySize:    50 * 1024 * 1024,
+			MaxConcurrentCallbacks: 50,
+			CallbackTimeout:        15 * time.Second,
+		})
+		assert.NoError(t, err)
+	})
+}
+
+func TestConfigurableLimits(t *testing.T) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	customMaxSize := int64(50 * 1024 * 1024)
+	customMaxCallbacks := 50
+	customCallbackTimeout := 15 * time.Second
+
+	vecto, err := New(Config{
+		BaseURL:                srv.URL,
+		MaxResponseBodySize:    customMaxSize,
+		MaxConcurrentCallbacks: customMaxCallbacks,
+		CallbackTimeout:        customCallbackTimeout,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, customMaxSize, vecto.config.MaxResponseBodySize)
+	assert.Equal(t, customMaxCallbacks, vecto.config.MaxConcurrentCallbacks)
+	assert.Equal(t, customCallbackTimeout, vecto.config.CallbackTimeout)
+}
+
+func TestResponseErrorUnwrap(t *testing.T) {
+	err := &ResponseError{
+		Response: &Response{
+			StatusCode: 404,
+			Data:       []byte("Not Found"),
+		},
+	}
+
+	assert.Nil(t, err.Unwrap())
+	assert.Contains(t, err.Error(), "404")
 }

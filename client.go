@@ -7,14 +7,9 @@ import (
 	"net/http"
 )
 
-const (
-	// MaxResponseBodySize limita o tamanho do response body para prevenir DoS
-	// Default: 100MB
-	MaxResponseBodySize = 100 * 1024 * 1024
-)
-
 type DefaultClient struct {
-	client http.Client
+	client            http.Client
+	maxResponseBodySize int64
 }
 
 func (c *DefaultClient) Do(ctx context.Context, req *Request) (res *Response, err error) {
@@ -30,20 +25,22 @@ func (c *DefaultClient) Do(ctx context.Context, req *Request) (res *Response, er
 
 	defer httpRes.Body.Close()
 
-	// Limita o tamanho do response body para prevenir DoS
-	limitedReader := io.LimitReader(httpRes.Body, MaxResponseBodySize)
+	maxSize := c.maxResponseBodySize
+	if maxSize <= 0 {
+		maxSize = 100 * 1024 * 1024
+	}
+
+	limitedReader := io.LimitReader(httpRes.Body, maxSize)
 	resBody, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return res, err
 	}
 
-	// Verifica se atingiu o limite
-	if len(resBody) >= MaxResponseBodySize {
-		// Tenta ler mais 1 byte para confirmar que excedeu
+	if int64(len(resBody)) >= maxSize {
 		var oneByte [1]byte
 		n, _ := httpRes.Body.Read(oneByte[:])
 		if n > 0 {
-			return res, fmt.Errorf("response body exceeded maximum size of %d bytes", MaxResponseBodySize)
+			return res, fmt.Errorf("response body exceeded maximum size of %d bytes", maxSize)
 		}
 	}
 

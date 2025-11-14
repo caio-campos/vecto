@@ -3,6 +3,7 @@ package vecto
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 )
@@ -47,6 +48,9 @@ func (r *Request) RawRequest() *http.Request {
 // SetParam adds or updates a query parameter for the request and returns
 // an error if the resulting URL cannot be constructed.
 func (r *Request) SetParam(key string, value any) error {
+	if key == "" {
+		return fmt.Errorf("param key cannot be empty")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.params == nil {
@@ -67,6 +71,9 @@ func (r *Request) SetHeaders(headers map[string]string) {
 // SetHeader adds or updates a header for the request.
 // This allows custom headers to be set, such as authentication tokens or content types.
 func (r *Request) SetHeader(key, value string) {
+	if key == "" {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.setHeaderUnsafe(key, value)
