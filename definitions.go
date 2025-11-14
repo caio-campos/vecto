@@ -29,6 +29,7 @@ type Config struct {
 	RequestTransform   RequestTransformFunc
 	ValidateStatus     ValidateStatusFunc
 	InsecureSkipVerify bool
+	Logger             Logger
 }
 
 type Client interface {

@@ -6,6 +6,11 @@ import (
 	"net/http"
 )
 
+// Request represents an HTTP request configuration.
+//
+// Thread Safety: Request objects are NOT safe for concurrent use.
+// Do not share or modify Request objects across multiple goroutines.
+// Each goroutine should create its own Request instance.
 type Request struct {
 	basePath         string
 	requestUrl       string

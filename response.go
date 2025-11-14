@@ -2,6 +2,10 @@ package vecto
 
 import "net/http"
 
+// Response represents an HTTP response.
+//
+// Thread Safety: Response objects are safe to read concurrently but
+// should not be modified after being returned from a request.
 type Response struct {
 	Data        []byte
 	StatusCode  int

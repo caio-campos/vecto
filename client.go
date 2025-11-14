@@ -11,10 +11,7 @@ type DefaultClient struct {
 }
 
 func (c *DefaultClient) Do(ctx context.Context, req Request) (res *Response, err error) {
-	reqCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	httpReq, err := req.toHTTPRequest(reqCtx)
+	httpReq, err := req.toHTTPRequest(ctx)
 	if err != nil {
 		return res, err
 	}

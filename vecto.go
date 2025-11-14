@@ -9,9 +9,16 @@ import (
 	"dario.cat/mergo"
 )
 
+// Vecto is the main HTTP client wrapper.
+//
+// Thread Safety: The Vecto instance itself is safe for concurrent use.
+// Multiple goroutines can safely call Request methods on the same Vecto instance.
+// However, Request and Response objects should not be shared between goroutines
+// or modified after being passed to request methods.
 type Vecto struct {
 	config       Config
 	client       Client
+	logger       Logger
 	Interceptors interceptorCollectionWrapper
 }
 
@@ -36,6 +43,12 @@ func New(config Config) (v *Vecto, err error) {
 
 	instance := Vecto{
 		config: config,
+	}
+
+	if config.Logger == nil {
+		instance.logger = newNoopLogger()
+	} else {
+		instance.logger = config.Logger
 	}
 
 	err = instance.setHttpClient()
@@ -77,8 +90,18 @@ func (v *Vecto) Options(ctx context.Context, url string, options *RequestOptions
 func (v *Vecto) Request(ctx context.Context, url string, method string, options *RequestOptions) (res *Response, err error) {
 	request, err := v.newRequest(url, method, options)
 	if err != nil {
-		return nil, err
+		v.logger.Error(ctx, "failed to create request", map[string]interface{}{
+			"url":    url,
+			"method": method,
+			"error":  err.Error(),
+		})
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	v.logger.Debug(ctx, "request created", map[string]interface{}{
+		"url":    request.FullUrl(),
+		"method": request.Method(),
+	})
 
 	if v.config.Adapter != nil {
 		return v.config.Adapter(request)
@@ -86,18 +109,38 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 
 	request, err = v.interceptRequest(ctx, request)
 	if err != nil {
-		return nil, err
+		v.logger.Error(ctx, "request interceptor failed", map[string]interface{}{
+			"url":   request.FullUrl(),
+			"error": err.Error(),
+		})
+		return nil, fmt.Errorf("request interceptor failed: %w", err)
 	}
 
 	res, err = v.client.Do(ctx, request)
 	if err != nil {
-		return nil, err
+		v.logger.Error(ctx, "http request failed", map[string]interface{}{
+			"url":    request.FullUrl(),
+			"method": request.Method(),
+			"error":  err.Error(),
+		})
+		return nil, fmt.Errorf("http request failed: %w", err)
 	}
+
+	v.logger.Info(ctx, "request completed", map[string]interface{}{
+		"url":         request.FullUrl(),
+		"method":      request.Method(),
+		"status_code": res.StatusCode,
+	})
 
 	res.success = v.config.ValidateStatus(res)
 	resultRes, err := v.interceptResponse(ctx, res)
 	if err != nil {
-		return nil, err
+		v.logger.Error(ctx, "response interceptor failed", map[string]interface{}{
+			"url":         request.FullUrl(),
+			"status_code": res.StatusCode,
+			"error":       err.Error(),
+		})
+		return nil, fmt.Errorf("response interceptor failed: %w", err)
 	}
 
 	v.dispatchRequestCompleted(resultRes)
@@ -114,7 +157,10 @@ func (v *Vecto) dispatchRequestCompleted(res *Response) {
 		go func(callback RequestCompletedCallback) {
 			defer func() {
 				if r := recover(); r != nil {
-					_ = fmt.Errorf("panic in request completed callback: %v", r)
+					v.logger.Error(context.Background(), "panic in request completed callback", map[string]interface{}{
+						"panic": fmt.Sprintf("%v", r),
+						"url":   res.request.FullUrl(),
+					})
 				}
 			}()
 			callback(event)
