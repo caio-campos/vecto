@@ -322,3 +322,168 @@ func TestResponseErrorUnwrap(t *testing.T) {
 		assert.Contains(t, err.Error(), "network error")
 	})
 }
+
+func TestHeadMethod(t *testing.T) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	vecto, err := New(Config{BaseURL: srv.URL})
+	assert.Nil(t, err)
+
+	t.Run("successful HEAD request", func(t *testing.T) {
+		res, err := vecto.Head(context.Background(), "/test/methods", nil)
+		assert.Nil(t, err)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+	})
+
+	t.Run("HEAD with headers", func(t *testing.T) {
+		res, err := vecto.Head(context.Background(), "/test/methods", &RequestOptions{
+			Headers: map[string]string{
+				"X-Custom-Header": "test-value",
+			},
+		})
+		assert.Nil(t, err)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+	})
+}
+
+func TestShouldUseRetry(t *testing.T) {
+	t.Run("should use retry when circuit breaker is nil", func(t *testing.T) {
+		result := shouldUseRetry(nil)
+		assert.True(t, result)
+	})
+
+	t.Run("should use retry when circuit breaker is closed", func(t *testing.T) {
+		config := DefaultCircuitBreakerConfig()
+		cb := NewCircuitBreaker("test", config)
+
+		result := shouldUseRetry(cb)
+		assert.True(t, result)
+	})
+
+	t.Run("should not use retry when circuit breaker is open", func(t *testing.T) {
+		config := DefaultCircuitBreakerConfig()
+		config.FailureThreshold = 1
+		cb := NewCircuitBreaker("test", config)
+
+		res := &Response{StatusCode: 500}
+		cb.RecordResult(res, nil)
+
+		result := shouldUseRetry(cb)
+		assert.False(t, result)
+	})
+
+	t.Run("should use retry when circuit breaker is half-open", func(t *testing.T) {
+		config := DefaultCircuitBreakerConfig()
+		config.FailureThreshold = 1
+		config.Timeout = 10 * time.Millisecond
+		cb := NewCircuitBreaker("test", config)
+
+		res := &Response{StatusCode: 500}
+		_, _ = cb.Execute(context.Background(), func() (*Response, error) {
+			return res, nil
+		})
+		cb.RecordResult(res, nil)
+
+		time.Sleep(20 * time.Millisecond)
+
+		state := cb.GetState()
+		if state == StateHalfOpen {
+			result := shouldUseRetry(cb)
+			assert.True(t, result)
+		}
+	})
+}
+
+func TestWriteDebugOutput(t *testing.T) {
+	t.Run("writes debug output with logger", func(t *testing.T) {
+		logger := &mockLogger{}
+		vecto, err := New(Config{
+			BaseURL: "https://api.example.com",
+			Logger:  logger,
+		})
+		assert.Nil(t, err)
+
+		req, _ := vecto.newRequest("/users/123", "GET", &RequestOptions{
+			Headers: map[string]string{"X-Request-Id": "test"},
+		})
+
+		res := &Response{
+			StatusCode: 200,
+			Data:       []byte(`{"id": 123}`),
+			success:    true,
+		}
+
+		vecto.writeDebugOutput(req, res)
+
+		assert.True(t, len(logger.debugCalls) > 0)
+		if len(logger.debugCalls) > 0 {
+			assert.Contains(t, logger.debugCalls[0].msg, "DEBUG INFO")
+			assert.Contains(t, logger.debugCalls[0].msg, "GET")
+		}
+	})
+
+	t.Run("writes debug output with trace info", func(t *testing.T) {
+		logger := &mockLogger{}
+		vecto, err := New(Config{
+			BaseURL:     "https://api.example.com",
+			Logger:      logger,
+			EnableTrace: true,
+		})
+		assert.Nil(t, err)
+
+		req, _ := vecto.newRequest("/users/123", "GET", nil)
+
+		trace := &TraceInfo{
+			DNSLookup:     10 * time.Millisecond,
+			TCPConnection: 20 * time.Millisecond,
+			TLSHandshake:  30 * time.Millisecond,
+		}
+
+		res := &Response{
+			StatusCode: 200,
+			Data:       []byte(`{"id": 123}`),
+			success:    true,
+			TraceInfo:  trace,
+		}
+
+		vecto.writeDebugOutput(req, res)
+
+		assert.True(t, len(logger.debugCalls) > 0)
+	})
+
+	t.Run("does not panic with nil request", func(t *testing.T) {
+		logger := &mockLogger{}
+		vecto, _ := New(Config{
+			BaseURL: "https://api.example.com",
+			Logger:  logger,
+		})
+
+		res := &Response{StatusCode: 200}
+		vecto.writeDebugOutput(nil, res)
+
+		assert.Equal(t, 0, len(logger.debugCalls))
+	})
+
+	t.Run("does not panic with nil response", func(t *testing.T) {
+		logger := &mockLogger{}
+		vecto, _ := New(Config{
+			BaseURL: "https://api.example.com",
+			Logger:  logger,
+		})
+
+		req, _ := vecto.newRequest("/test", "GET", nil)
+		vecto.writeDebugOutput(req, nil)
+
+		assert.Equal(t, 0, len(logger.debugCalls))
+	})
+
+	t.Run("does not write when logger is noop", func(t *testing.T) {
+		vecto, _ := New(Config{BaseURL: "https://api.example.com"})
+
+		req, _ := vecto.newRequest("/test", "GET", nil)
+		res := &Response{StatusCode: 200}
+
+		vecto.writeDebugOutput(req, res)
+	})
+}

@@ -430,3 +430,298 @@ func BenchmarkRequestBuilderOptimized(b *testing.B) {
 	}
 }
 
+func BenchmarkRetryMechanism(b *testing.B) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	b.Run("NoRetry", func(b *testing.B) {
+		vecto, err := New(Config{
+			BaseURL: srv.URL,
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+		}
+	})
+
+	b.Run("WithRetryDisabled", func(b *testing.B) {
+		vecto, err := New(Config{
+			BaseURL: srv.URL,
+			Retry: &RetryConfig{
+				MaxAttempts: 1,
+			},
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+		}
+	})
+
+	b.Run("WithRetryEnabled", func(b *testing.B) {
+		vecto, err := New(Config{
+			BaseURL: srv.URL,
+			Retry: &RetryConfig{
+				MaxAttempts: 3,
+				WaitTime:    1 * time.Millisecond,
+				MaxWaitTime: 10 * time.Millisecond,
+				Backoff:     ExponentialBackoff,
+			},
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+		}
+	})
+}
+
+func BenchmarkMetricsCollection(b *testing.B) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	b.Run("WithoutMetrics", func(b *testing.B) {
+		vecto, err := New(Config{
+			BaseURL: srv.URL,
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+		}
+	})
+
+	b.Run("WithMetrics", func(b *testing.B) {
+		collector := &mockMetricsCollector{}
+		vecto, err := New(Config{
+			BaseURL:          srv.URL,
+			MetricsCollector: collector,
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+		}
+	})
+
+	b.Run("MetricsCollectionConcurrent", func(b *testing.B) {
+		collector := &mockMetricsCollector{}
+		vecto, err := New(Config{
+			BaseURL:          srv.URL,
+			MetricsCollector: collector,
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+			}
+		})
+	})
+}
+
+func BenchmarkMiddlewareChain(b *testing.B) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	b.Run("NoMiddleware", func(b *testing.B) {
+		vecto, err := New(Config{
+			BaseURL: srv.URL,
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+		}
+	})
+
+	b.Run("SingleRequestMiddleware", func(b *testing.B) {
+		vecto, err := New(Config{
+			BaseURL: srv.URL,
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		vecto.UseRequest(func(ctx context.Context, req *Request) (*Request, error) {
+			req.SetHeader("X-Custom-Header", "test")
+			return req, nil
+		})
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+		}
+	})
+
+	b.Run("MultipleMiddlewares", func(b *testing.B) {
+		vecto, err := New(Config{
+			BaseURL: srv.URL,
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		for j := 0; j < 5; j++ {
+			headerName := fmt.Sprintf("X-Header-%d", j)
+			vecto.UseRequest(func(ctx context.Context, req *Request) (*Request, error) {
+				req.SetHeader(headerName, "value")
+				return req, nil
+			})
+			vecto.UseResponse(func(ctx context.Context, res *Response) (*Response, error) {
+				return res, nil
+			})
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+		}
+	})
+}
+
+func BenchmarkTraceEnabled(b *testing.B) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	b.Run("WithoutTrace", func(b *testing.B) {
+		vecto, err := New(Config{
+			BaseURL:     srv.URL,
+			EnableTrace: false,
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+		}
+	})
+
+	b.Run("WithTrace", func(b *testing.B) {
+		vecto, err := New(Config{
+			BaseURL:     srv.URL,
+			EnableTrace: true,
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+		}
+	})
+}
+
+func BenchmarkRetryBackoffStrategies(b *testing.B) {
+	config := &RetryConfig{
+		WaitTime:    1 * time.Millisecond,
+		MaxWaitTime: 100 * time.Millisecond,
+	}
+
+	b.Run("ExponentialBackoff", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			for attempt := 0; attempt < 5; attempt++ {
+				_ = ExponentialBackoff(attempt, config)
+			}
+		}
+	})
+
+	b.Run("LinearBackoff", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			for attempt := 0; attempt < 5; attempt++ {
+				_ = LinearBackoff(attempt, config)
+			}
+		}
+	})
+
+	b.Run("FixedBackoff", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			for attempt := 0; attempt < 5; attempt++ {
+				_ = FixedBackoff(attempt, config)
+			}
+		}
+	})
+}
+
+func BenchmarkCompleteRequestFlow(b *testing.B) {
+	srv := newHTTPTestServer()
+	defer srv.Close()
+
+	b.Run("MinimalConfig", func(b *testing.B) {
+		vecto, err := New(Config{
+			BaseURL: srv.URL,
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+			}
+		})
+	})
+
+	b.Run("FullFeatured", func(b *testing.B) {
+		collector := &mockMetricsCollector{}
+		cbConfig := DefaultCircuitBreakerConfig()
+
+		vecto, err := New(Config{
+			BaseURL:          srv.URL,
+			MetricsCollector: collector,
+			CircuitBreaker:   &cbConfig,
+			EnableTrace:      true,
+			Retry: &RetryConfig{
+				MaxAttempts: 2,
+				WaitTime:    1 * time.Millisecond,
+			},
+		})
+		if err != nil {
+			b.Fatalf("failed to create vecto instance: %v", err)
+		}
+
+		vecto.UseRequest(func(ctx context.Context, req *Request) (*Request, error) {
+			return req, nil
+		})
+		vecto.UseResponse(func(ctx context.Context, res *Response) (*Response, error) {
+			return res, nil
+		})
+
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_, _ = vecto.Get(context.Background(), "/test/status/200", nil)
+			}
+		})
+	})
+}
+
