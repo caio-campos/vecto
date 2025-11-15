@@ -3,7 +3,6 @@ package vecto
 import (
 	"crypto/tls"
 	"fmt"
-	"io"
 	"net/http/httptrace"
 	"strings"
 	"time"
@@ -208,54 +207,5 @@ func computeTraceInfo(tc *traceContext) *TraceInfo {
 	}
 
 	return info
-}
-
-// DebugWriter writes debug information to the configured writer.
-func writeDebugInfo(writer io.Writer, req *Request, res *Response, trace *TraceInfo) {
-	if writer == nil {
-		return
-	}
-
-	fmt.Fprintf(writer, "\n=== DEBUG INFO ===\n")
-	fmt.Fprintf(writer, "Request: %s %s\n", req.Method(), req.FullUrl())
-	
-	if headers := req.Headers(); len(headers) > 0 {
-		fmt.Fprintf(writer, "\nRequest Headers:\n")
-		for key, value := range headers {
-			fmt.Fprintf(writer, "  %s: %s\n", key, value)
-		}
-	}
-
-	if req.Data() != nil {
-		fmt.Fprintf(writer, "\nRequest Body:\n  %v\n", req.Data())
-	}
-
-	if res != nil {
-		fmt.Fprintf(writer, "\nResponse Status: %d\n", res.StatusCode)
-		
-		if headers := res.Headers(); len(headers) > 0 {
-			fmt.Fprintf(writer, "\nResponse Headers:\n")
-			for key, values := range headers {
-				for _, value := range values {
-					fmt.Fprintf(writer, "  %s: %s\n", key, value)
-				}
-			}
-		}
-
-		if len(res.Data) > 0 {
-			bodyPreview := string(res.Data)
-			if len(bodyPreview) > 500 {
-				bodyPreview = bodyPreview[:500] + "... (truncated)"
-			}
-			fmt.Fprintf(writer, "\nResponse Body:\n%s\n", bodyPreview)
-		}
-	}
-
-	if trace != nil {
-		fmt.Fprintf(writer, "\n%s", trace.String())
-	}
-
-	fmt.Fprintf(writer, "\nCurl Equivalent:\n%s\n", req.ToCurl())
-	fmt.Fprintf(writer, "==================\n\n")
 }
 

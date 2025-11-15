@@ -510,7 +510,7 @@ func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions
 
 	fullUrlStr := v.config.BaseURL + urlStr
 
-	if reqOptions.PathParams != nil && len(reqOptions.PathParams) > 0 {
+	if reqOptions.PathParams != nil {
 		fullUrlStr = replacePathParams(fullUrlStr, reqOptions.PathParams)
 	}
 
@@ -532,7 +532,7 @@ func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions
 		headers[k] = v
 	}
 
-	if reqOptions.FormData != nil && len(reqOptions.FormData) > 0 {
+	if reqOptions.FormData != nil {
 		data = encodeFormData(reqOptions.FormData)
 		headers["Content-Type"] = "application/x-www-form-urlencoded"
 	}
