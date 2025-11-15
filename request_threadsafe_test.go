@@ -53,7 +53,9 @@ func TestRequestThreadSafety(t *testing.T) {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
-				req.SetHeader("x-thread-"+strconv.Itoa(idx), strconv.Itoa(idx))
+				if err := req.SetHeader("x-thread-"+strconv.Itoa(idx), strconv.Itoa(idx)); err != nil {
+					errCh <- err
+				}
 				if err := req.SetParam("param-"+strconv.Itoa(idx), idx); err != nil {
 					errCh <- err
 				}
@@ -83,7 +85,7 @@ func TestRequestThreadSafety(t *testing.T) {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
-				req.SetHeader("x-writer-"+strconv.Itoa(idx), strconv.Itoa(idx))
+				_ = req.SetHeader("x-writer-"+strconv.Itoa(idx), strconv.Itoa(idx))
 			}(i)
 		}
 

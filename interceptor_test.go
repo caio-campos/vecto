@@ -23,12 +23,16 @@ func TestReqInterceptor(t *testing.T) {
 	})
 
 	vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
-		req.SetHeader("x-custom", "custom")
+		if err := req.SetHeader("x-custom", "custom"); err != nil {
+			return req, err
+		}
 		return req, nil
 	})
 
 	vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
-		req.SetHeader("x-another", "another")
+		if err := req.SetHeader("x-another", "another"); err != nil {
+			return req, err
+		}
 		return req, nil
 	})
 
@@ -55,7 +59,9 @@ func TestAsyncMultiInterceptor(t *testing.T) {
 
 	vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
 		headers := req.Headers()
-		req.SetHeader("x-req-id", headers["x-index"])
+		if err := req.SetHeader("x-req-id", headers["x-index"]); err != nil {
+			return req, err
+		}
 
 		return req, nil
 	})

@@ -15,11 +15,13 @@ import (
 // However, Request and Response objects should not be shared between goroutines
 // or modified after being passed to request methods.
 type Vecto struct {
-	config            Config
-	client            Client
-	logger            Logger
-	Interceptors      interceptorCollectionWrapper
-	circuitBreakerMgr *CircuitBreakerManager
+	config             Config
+	client             Client
+	logger             Logger
+	Interceptors       interceptorCollectionWrapper
+	circuitBreakerMgr  *CircuitBreakerManager
+	callbackDispatcher *callbackDispatcher
+	requestHandler     *requestHandler
 }
 
 var defaultConfig = Config{
@@ -69,6 +71,9 @@ func New(config Config) (v *Vecto, err error) {
 		return nil, err
 	}
 
+	instance.callbackDispatcher = newCallbackDispatcher(instance.logger, mergedConfig)
+	instance.requestHandler = newRequestHandler(&instance)
+
 	return &instance, nil
 }
 
@@ -81,18 +86,34 @@ func validateConfig(config Config) error {
 		return fmt.Errorf("max response body size cannot be negative")
 	}
 
+	if config.MaxResponseBodySize > 0 && config.MaxResponseBodySize > 1024*1024*1024 {
+		return fmt.Errorf("max response body size cannot exceed 1GB")
+	}
+
 	if config.MaxConcurrentCallbacks < 0 {
 		return fmt.Errorf("max concurrent callbacks cannot be negative")
+	}
+
+	if config.MaxConcurrentCallbacks > 10000 {
+		return fmt.Errorf("max concurrent callbacks cannot exceed 10000")
 	}
 
 	if config.CallbackTimeout < 0 {
 		return fmt.Errorf("callback timeout cannot be negative")
 	}
 
+	if config.CallbackTimeout > 0 && config.CallbackTimeout > 300*time.Second {
+		return fmt.Errorf("callback timeout cannot exceed 5 minutes")
+	}
+
 	if config.BaseURL != "" {
-		if _, err := http.NewRequest("GET", config.BaseURL, nil); err != nil {
+		if err := validateURL(config.BaseURL); err != nil {
 			return fmt.Errorf("invalid base URL: %w", err)
 		}
+	}
+
+	if err := validateHeaders(config.Headers); err != nil {
+		return fmt.Errorf("invalid headers: %w", err)
 	}
 
 	return nil
@@ -283,79 +304,29 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 		return nil, fmt.Errorf("request interceptor failed: %w", err)
 	}
 
-	var cbKey string
-	var breaker *CircuitBreaker
-
 	retryConfig := v.getRetryConfig(options)
 
-	if v.circuitBreakerMgr != nil {
-		request.mu.RLock()
-		if request.cbKeyCached {
-			cbKey = request.cbKey
-			request.mu.RUnlock()
-		} else {
-			request.mu.RUnlock()
-			request.mu.Lock()
-			if !request.cbKeyCached {
-				request.cbKey = v.getCircuitBreakerKey(request)
-				request.cbKeyCached = true
-			}
-			cbKey = request.cbKey
-			request.mu.Unlock()
-		}
+	var breaker *CircuitBreaker
+	var cbKey string
 
+	if v.circuitBreakerMgr != nil {
+		cbKey = v.requestHandler.getOrSetCircuitBreakerKey(request)
 		breaker = v.circuitBreakerMgr.GetOrCreate(cbKey, nil)
 
 		res, err = breaker.Execute(ctx, func() (*Response, error) {
-			if retryConfig != nil && shouldUseRetry(breaker) {
-				return v.executeWithRetry(ctx, request, retryConfig)
-			}
-			return v.client.Do(ctx, request)
+			return v.requestHandler.executeRequest(ctx, request, retryConfig, breaker)
 		})
 
 		if err != nil {
-			duration := time.Since(startTime)
 			if _, isCbError := err.(*CircuitBreakerError); isCbError {
-				if !v.logger.IsNoop() {
-					v.logger.Warn(ctx, "request blocked by circuit breaker", map[string]interface{}{
-						"url":    request.FullUrl(),
-						"method": request.Method(),
-						"key":    cbKey,
-						"state":  breaker.GetState().String(),
-					})
-				}
-				v.recordMetrics(ctx, request, nil, duration, err)
-				return nil, err
+				return v.requestHandler.handleCircuitBreakerError(ctx, request, cbKey, breaker, startTime, err)
 			}
-
-			if !v.logger.IsNoop() {
-				v.logger.Error(ctx, "http request failed", map[string]interface{}{
-					"url":    request.FullUrl(),
-					"method": request.Method(),
-					"error":  err.Error(),
-				})
-			}
-			v.recordMetrics(ctx, request, nil, duration, err)
-			return nil, fmt.Errorf("http request failed: %w", err)
+			return v.requestHandler.handleRequestError(ctx, request, method, startTime, err)
 		}
 	} else {
-		if retryConfig != nil {
-			res, err = v.executeWithRetry(ctx, request, retryConfig)
-		} else {
-			res, err = v.client.Do(ctx, request)
-		}
-
+		res, err = v.requestHandler.executeRequest(ctx, request, retryConfig, nil)
 		if err != nil {
-			duration := time.Since(startTime)
-			if !v.logger.IsNoop() {
-				v.logger.Error(ctx, "http request failed", map[string]interface{}{
-					"url":    request.FullUrl(),
-					"method": request.Method(),
-					"error":  err.Error(),
-				})
-			}
-			v.recordMetrics(ctx, request, nil, duration, err)
-			return nil, fmt.Errorf("http request failed: %w", err)
+			return v.requestHandler.handleRequestError(ctx, request, method, startTime, err)
 		}
 	}
 
@@ -394,84 +365,11 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 		v.writeDebugOutput(request, resultRes)
 	}
 
-	v.dispatchRequestCompleted(ctx, resultRes)
+	v.callbackDispatcher.dispatch(ctx, resultRes)
 
 	v.recordMetrics(ctx, request, resultRes, duration, nil)
 
 	return resultRes, nil
-}
-
-func (v *Vecto) dispatchRequestCompleted(ctx context.Context, res *Response) {
-	responseCopy := res.deepCopy()
-
-	event := RequestCompletedEvent{
-		response: responseCopy,
-	}
-
-	requestUrl := responseCopy.request.FullUrl()
-
-	res.request.mu.RLock()
-	callbacks := make([]RequestCompletedCallback, len(res.request.events.completed))
-	copy(callbacks, res.request.events.completed)
-	res.request.mu.RUnlock()
-
-	maxConcurrent := v.config.MaxConcurrentCallbacks
-	if maxConcurrent <= 0 {
-		maxConcurrent = 100
-	}
-
-	callbackTimeout := v.config.CallbackTimeout
-	if callbackTimeout <= 0 {
-		callbackTimeout = 30 * time.Second
-	}
-
-	sem := make(chan struct{}, maxConcurrent)
-
-	for _, cb := range callbacks {
-		select {
-		case <-ctx.Done():
-			v.logger.Warn(ctx, "context cancelled, skipping remaining callbacks", map[string]interface{}{
-				"url": requestUrl,
-			})
-			return
-		case sem <- struct{}{}:
-		}
-
-		go func(callback RequestCompletedCallback, url string) {
-			defer func() {
-				<-sem
-				if r := recover(); r != nil {
-					v.logger.Error(ctx, "panic in request completed callback", map[string]interface{}{
-						"panic": fmt.Sprintf("%v", r),
-						"url":   url,
-					})
-				}
-			}()
-
-			callbackCtx, cancel := context.WithTimeout(ctx, callbackTimeout)
-			defer cancel()
-
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				select {
-				case <-callbackCtx.Done():
-					return
-				default:
-					callback(event)
-				}
-			}()
-
-			select {
-			case <-done:
-			case <-callbackCtx.Done():
-				v.logger.Error(ctx, "callback timeout exceeded", map[string]interface{}{
-					"url":     url,
-					"timeout": callbackTimeout.String(),
-				})
-			}
-		}(cb, requestUrl)
-	}
 }
 
 func (v *Vecto) interceptRequest(ctx context.Context, req *Request) (resultReq *Request, err error) {
@@ -508,7 +406,16 @@ func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions
 		reqOptions = *options
 	}
 
+	urlStr = sanitizeURL(urlStr)
+	if urlStr == "" {
+		return nil, fmt.Errorf("URL cannot be empty")
+	}
+
 	fullUrlStr := v.config.BaseURL + urlStr
+
+	if err := validateURL(fullUrlStr); err != nil {
+		return nil, fmt.Errorf("invalid URL: %w", err)
+	}
 
 	if reqOptions.PathParams != nil {
 		fullUrlStr = replacePathParams(fullUrlStr, reqOptions.PathParams)

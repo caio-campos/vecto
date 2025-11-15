@@ -1,5 +1,7 @@
 package vecto
 
+import "fmt"
+
 type requestBuilder struct {
 	request *Request
 	err     error
@@ -17,16 +19,24 @@ func newRequestBuilder(basePath, method string) *requestBuilder {
 }
 
 func (b *requestBuilder) SetHeaders(headers map[string]string) *requestBuilder {
+	if b.err != nil {
+		return b
+	}
+
 	if len(headers) == 0 {
 		return b
 	}
+
+	if err := validateHeaders(headers); err != nil {
+		b.err = fmt.Errorf("invalid headers: %w", err)
+		return b
+	}
+
 	if b.request.headers == nil {
 		b.request.headers = make(map[string]string, len(headers))
 	}
 	for key, value := range headers {
-		if key != "" {
-			b.request.headers[key] = value
-		}
+		b.request.headers[key] = value
 	}
 	return b
 }

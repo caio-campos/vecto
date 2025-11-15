@@ -2,6 +2,7 @@ package vecto
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -293,13 +294,31 @@ func TestConfigurableLimits(t *testing.T) {
 }
 
 func TestResponseErrorUnwrap(t *testing.T) {
-	err := &ResponseError{
-		Response: &Response{
-			StatusCode: 404,
-			Data:       []byte("Not Found"),
-		},
-	}
+	t.Run("without underlying error", func(t *testing.T) {
+		err := &ResponseError{
+			Response: &Response{
+				StatusCode: 404,
+				Data:       []byte("Not Found"),
+			},
+			Err: nil,
+		}
 
-	assert.Nil(t, err.Unwrap())
-	assert.Contains(t, err.Error(), "404")
+		assert.Nil(t, err.Unwrap())
+		assert.Contains(t, err.Error(), "404")
+	})
+
+	t.Run("with underlying error", func(t *testing.T) {
+		underlyingErr := fmt.Errorf("network error")
+		err := &ResponseError{
+			Response: &Response{
+				StatusCode: 500,
+				Data:       []byte("Internal Server Error"),
+			},
+			Err: underlyingErr,
+		}
+
+		assert.Equal(t, underlyingErr, err.Unwrap())
+		assert.Contains(t, err.Error(), "500")
+		assert.Contains(t, err.Error(), "network error")
+	})
 }

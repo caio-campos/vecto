@@ -60,22 +60,33 @@ func (r *Request) SetParam(key string, value any) error {
 	return r.refreshUrlUnsafe()
 }
 
-func (r *Request) SetHeaders(headers map[string]string) {
+func (r *Request) SetHeaders(headers map[string]string) error {
+	if err := validateHeaders(headers); err != nil {
+		return fmt.Errorf("invalid headers: %w", err)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for key, value := range headers {
 		r.setHeaderUnsafe(key, value)
 	}
+	return nil
 }
 
 // SetHeader adds or updates a header for the request.
-func (r *Request) SetHeader(key, value string) {
-	if key == "" {
-		return
+func (r *Request) SetHeader(key, value string) error {
+	if err := validateHeaderName(key); err != nil {
+		return fmt.Errorf("invalid header name: %w", err)
 	}
+
+	if err := validateHeaderValue(value); err != nil {
+		return fmt.Errorf("invalid header value: %w", err)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.setHeaderUnsafe(key, value)
+	return nil
 }
 
 func (r *Request) setHeaderUnsafe(key, value string) {

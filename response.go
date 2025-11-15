@@ -101,5 +101,17 @@ func (r *Response) RequestFailedError() error {
 
 	return &ResponseError{
 		Response: r,
+		Err:      nil,
+	}
+}
+
+func (r *Response) RequestFailedErrorWithCause(err error) error {
+	if r.success {
+		return nil
+	}
+
+	return &ResponseError{
+		Response: r,
+		Err:      err,
 	}
 }

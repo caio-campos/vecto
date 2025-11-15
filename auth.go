@@ -87,7 +87,9 @@ func (r *Request) SetBasicAuth(username, password string) error {
 	}
 
 	encodedAuth := encodeBasicAuth(username, password)
-	r.SetHeader("Authorization", encodedAuth)
+	if err := r.SetHeader("Authorization", encodedAuth); err != nil {
+		return fmt.Errorf("failed to set authorization header: %w", err)
+	}
 	return nil
 }
 
@@ -98,7 +100,9 @@ func (r *Request) SetBearerToken(token string) error {
 		return fmt.Errorf("token cannot be empty")
 	}
 
-	r.SetHeader("Authorization", fmt.Sprintf("Bearer %s", token))
+	if err := r.SetHeader("Authorization", fmt.Sprintf("Bearer %s", token)); err != nil {
+		return fmt.Errorf("failed to set authorization header: %w", err)
+	}
 	return nil
 }
 
