@@ -23,7 +23,7 @@ func TestRequestThreadSafety(t *testing.T) {
 		assert.NoError(t, err)
 
 		wg := sync.WaitGroup{}
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -49,7 +49,7 @@ func TestRequestThreadSafety(t *testing.T) {
 
 		wg := sync.WaitGroup{}
 		errCh := make(chan error, 200)
-		for i := 0; i < 100; i++ {
+		for idx := range 100 {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
@@ -59,7 +59,7 @@ func TestRequestThreadSafety(t *testing.T) {
 				if err := req.SetParam("param-"+strconv.Itoa(idx), idx); err != nil {
 					errCh <- err
 				}
-			}(i)
+			}(idx)
 		}
 		wg.Wait()
 		close(errCh)
@@ -81,15 +81,15 @@ func TestRequestThreadSafety(t *testing.T) {
 
 		wg := sync.WaitGroup{}
 
-		for i := 0; i < 50; i++ {
+		for idx := range 50 {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
 				_ = req.SetHeader("x-writer-"+strconv.Itoa(idx), strconv.Itoa(idx))
-			}(i)
+			}(idx)
 		}
 
-		for i := 0; i < 50; i++ {
+		for range 50 {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -106,7 +106,7 @@ func TestRequestThreadSafety(t *testing.T) {
 		wg := sync.WaitGroup{}
 		errCh := make(chan error, 200)
 
-		for i := 0; i < 100; i++ {
+		for idx := range 100 {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
@@ -134,7 +134,7 @@ func TestRequestThreadSafety(t *testing.T) {
 				if res.StatusCode != 200 {
 					errCh <- fmt.Errorf("unexpected status: %d", res.StatusCode)
 				}
-			}(i)
+			}(idx)
 		}
 
 		wg.Wait()
