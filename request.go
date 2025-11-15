@@ -31,11 +31,23 @@ type Request struct {
 	cbKeyCached bool
 }
 
-// Completed adds a callback function that is triggered when the request completes.
-func (r *Request) Completed(cb RequestCompletedCallback) {
+// OnCompleted registers a channel that will receive a RequestCompletedEvent when the request completes.
+// The channel must be buffered or have a receiver ready to avoid blocking the request completion.
+// Returns the same Request for chaining.
+//
+// Example:
+//
+//	eventCh := make(chan vecto.RequestCompletedEvent, 1)
+//	req.OnCompleted(eventCh)
+//
+//	// Later, receive the event
+//	event := <-eventCh
+//	response := event.Response()
+func (r *Request) OnCompleted(ch chan<- RequestCompletedEvent) *Request {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.events.completed = append(r.events.completed, cb)
+	r.events.channels = append(r.events.channels, ch)
+	return r
 }
 
 // RawRequest returns the underlying *http.Request object.

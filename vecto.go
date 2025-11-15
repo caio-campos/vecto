@@ -16,13 +16,13 @@ import (
 // However, Request and Response objects should not be shared between goroutines
 // or modified after being passed to request methods.
 type Vecto struct {
-	config             Config
-	client             Client
-	logger             Logger
-	middleware         *middlewareCollection
-	circuitBreakerMgr  *CircuitBreakerManager
-	callbackDispatcher *callbackDispatcher
-	requestHandler     *requestHandler
+	config            Config
+	client            Client
+	logger            Logger
+	middleware        *middlewareCollection
+	circuitBreakerMgr *CircuitBreakerManager
+	channelDispatcher *channelDispatcher
+	requestHandler    *requestHandler
 }
 
 var defaultConfig = Config{
@@ -37,9 +37,7 @@ var defaultConfig = Config{
 
 		return res.StatusCode >= 200 && res.StatusCode < 300
 	},
-	MaxResponseBodySize:    100 * 1024 * 1024,
-	MaxConcurrentCallbacks: 100,
-	CallbackTimeout:        30 * time.Second,
+	MaxResponseBodySize: 100 * 1024 * 1024,
 }
 
 func New(config Config) (v *Vecto, err error) {
@@ -73,7 +71,7 @@ func New(config Config) (v *Vecto, err error) {
 	}
 
 	instance.middleware = newMiddlewareCollection()
-	instance.callbackDispatcher = newCallbackDispatcher(instance.logger, mergedConfig)
+	instance.channelDispatcher = newChannelDispatcher(instance.logger)
 	instance.requestHandler = newRequestHandler(&instance)
 
 	return &instance, nil
@@ -213,7 +211,7 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 		v.writeDebugOutput(request, resultRes)
 	}
 
-	v.callbackDispatcher.dispatch(ctx, resultRes)
+	v.channelDispatcher.dispatch(ctx, resultRes)
 
 	v.recordMetrics(ctx, request, resultRes, duration, nil)
 

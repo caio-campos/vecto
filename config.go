@@ -2,7 +2,6 @@ package vecto
 
 import (
 	"fmt"
-	"time"
 )
 
 func validateConfig(config Config) error {
@@ -16,22 +15,6 @@ func validateConfig(config Config) error {
 
 	if config.MaxResponseBodySize > 0 && config.MaxResponseBodySize > 1024*1024*1024 {
 		return fmt.Errorf("max response body size cannot exceed 1GB")
-	}
-
-	if config.MaxConcurrentCallbacks < 0 {
-		return fmt.Errorf("max concurrent callbacks cannot be negative")
-	}
-
-	if config.MaxConcurrentCallbacks > 10000 {
-		return fmt.Errorf("max concurrent callbacks cannot exceed 10000")
-	}
-
-	if config.CallbackTimeout < 0 {
-		return fmt.Errorf("callback timeout cannot be negative")
-	}
-
-	if config.CallbackTimeout > 0 && config.CallbackTimeout > 300*time.Second {
-		return fmt.Errorf("callback timeout cannot exceed 5 minutes")
 	}
 
 	if config.BaseURL != "" {
@@ -58,11 +41,9 @@ func mergeConfig(provided, defaults Config) Config {
 		RequestTransform:       defaults.RequestTransform,
 		ValidateStatus:         defaults.ValidateStatus,
 		InsecureSkipVerify:     defaults.InsecureSkipVerify,
-		Logger:                 defaults.Logger,
-		MetricsCollector:       defaults.MetricsCollector,
-		MaxResponseBodySize:    defaults.MaxResponseBodySize,
-		MaxConcurrentCallbacks: defaults.MaxConcurrentCallbacks,
-		CallbackTimeout:        defaults.CallbackTimeout,
+		Logger:              defaults.Logger,
+		MetricsCollector:    defaults.MetricsCollector,
+		MaxResponseBodySize: defaults.MaxResponseBodySize,
 	}
 
 	if provided.BaseURL != "" {
@@ -114,14 +95,6 @@ func mergeConfig(provided, defaults Config) Config {
 
 	if provided.MaxResponseBodySize > 0 {
 		result.MaxResponseBodySize = provided.MaxResponseBodySize
-	}
-
-	if provided.MaxConcurrentCallbacks > 0 {
-		result.MaxConcurrentCallbacks = provided.MaxConcurrentCallbacks
-	}
-
-	if provided.CallbackTimeout > 0 {
-		result.CallbackTimeout = provided.CallbackTimeout
 	}
 
 	if provided.CircuitBreaker != nil {

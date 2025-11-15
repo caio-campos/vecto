@@ -17,8 +17,6 @@ type RequestTransformFunc func(req *Request) (data []byte, err error)
 
 type ValidateStatusFunc func(res *Response) bool
 
-type RequestCompletedCallback func(ev RequestCompletedEvent)
-
 // RequestMetrics contains metrics information for an HTTP request.
 type RequestMetrics struct {
 	// Method is the HTTP method (GET, POST, etc.)
@@ -70,8 +68,6 @@ type Config struct {
 	Logger                 Logger
 	MetricsCollector       MetricsCollector
 	MaxResponseBodySize    int64
-	MaxConcurrentCallbacks int
-	CallbackTimeout        time.Duration
 	CircuitBreaker         *CircuitBreakerConfig
 	Retry                  *RetryConfig
 	EnableTrace            bool
@@ -83,7 +79,7 @@ type Client interface {
 }
 
 type requestEvents struct {
-	completed []RequestCompletedCallback
+	channels []chan<- RequestCompletedEvent
 }
 
 type RequestCompletedEvent struct {

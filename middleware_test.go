@@ -70,15 +70,20 @@ func TestAsyncMultiMiddleware(t *testing.T) {
 		return req, nil
 	})
 
+	eventCh := make(chan RequestCompletedEvent, 1000)
+	
+	go func() {
+		for event := range eventCh {
+			res := event.Response()
+			statusCodeStr := strings.TrimPrefix(res.request.FullUrl(), srv.URL+"/test/status/")
+			statusCode, _ := strconv.Atoi(statusCodeStr)
+			assert.Equal(t, statusCode, res.StatusCode)
+			assert.Equal(t, res.Success(), res.StatusCode < 300)
+		}
+	}()
+
 	vecto.UseRequest(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
-		statusCodeStr := strings.TrimPrefix(req.FullUrl(), srv.URL+"/test/status/")
-
-		statusCode, _ := strconv.Atoi(statusCodeStr)
-		req.Completed(func(event RequestCompletedEvent) {
-			assert.Equal(t, statusCode, event.response.StatusCode)
-			assert.Equal(t, event.Response().Success(), event.response.StatusCode < 300)
-		})
-
+		req.OnCompleted(eventCh)
 		return req, nil
 	})
 

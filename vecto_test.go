@@ -234,22 +234,6 @@ func TestConfigValidation(t *testing.T) {
 		assert.Contains(t, err.Error(), "max response body size cannot be negative")
 	})
 
-	t.Run("negative max concurrent callbacks", func(t *testing.T) {
-		_, err := New(Config{
-			MaxConcurrentCallbacks: -1,
-		})
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "max concurrent callbacks cannot be negative")
-	})
-
-	t.Run("negative callback timeout", func(t *testing.T) {
-		_, err := New(Config{
-			CallbackTimeout: -1 * time.Second,
-		})
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "callback timeout cannot be negative")
-	})
-
 	t.Run("invalid base URL", func(t *testing.T) {
 		_, err := New(Config{
 			BaseURL: "://invalid-url",
@@ -263,11 +247,9 @@ func TestConfigValidation(t *testing.T) {
 		defer srv.Close()
 
 		_, err := New(Config{
-			BaseURL:                srv.URL,
-			Timeout:                10 * time.Second,
-			MaxResponseBodySize:    50 * 1024 * 1024,
-			MaxConcurrentCallbacks: 50,
-			CallbackTimeout:        15 * time.Second,
+			BaseURL:             srv.URL,
+			Timeout:             10 * time.Second,
+			MaxResponseBodySize: 50 * 1024 * 1024,
 		})
 		assert.NoError(t, err)
 	})
@@ -278,19 +260,13 @@ func TestConfigurableLimits(t *testing.T) {
 	defer srv.Close()
 
 	customMaxSize := int64(50 * 1024 * 1024)
-	customMaxCallbacks := 50
-	customCallbackTimeout := 15 * time.Second
 
 	vecto, err := New(Config{
-		BaseURL:                srv.URL,
-		MaxResponseBodySize:    customMaxSize,
-		MaxConcurrentCallbacks: customMaxCallbacks,
-		CallbackTimeout:        customCallbackTimeout,
+		BaseURL:             srv.URL,
+		MaxResponseBodySize: customMaxSize,
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, customMaxSize, vecto.config.MaxResponseBodySize)
-	assert.Equal(t, customMaxCallbacks, vecto.config.MaxConcurrentCallbacks)
-	assert.Equal(t, customCallbackTimeout, vecto.config.CallbackTimeout)
 }
 
 func TestResponseErrorUnwrap(t *testing.T) {
