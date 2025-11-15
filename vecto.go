@@ -18,7 +18,7 @@ type Vecto struct {
 	config             Config
 	client             Client
 	logger             Logger
-	Interceptors       interceptorCollectionWrapper
+	middleware         *middlewareCollection
 	circuitBreakerMgr  *CircuitBreakerManager
 	callbackDispatcher *callbackDispatcher
 	requestHandler     *requestHandler
@@ -71,6 +71,7 @@ func New(config Config) (v *Vecto, err error) {
 		return nil, err
 	}
 
+	instance.middleware = newMiddlewareCollection()
 	instance.callbackDispatcher = newCallbackDispatcher(instance.logger, mergedConfig)
 	instance.requestHandler = newRequestHandler(&instance)
 
@@ -295,13 +296,13 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 	request, err = v.interceptRequest(ctx, request)
 	if err != nil {
 		if !v.logger.IsNoop() {
-			v.logger.Error(ctx, "request interceptor failed", map[string]interface{}{
+			v.logger.Error(ctx, "request middleware failed", map[string]interface{}{
 				"url":   request.FullUrl(),
 				"error": err.Error(),
 			})
 		}
 		v.recordMetrics(ctx, request, nil, time.Since(startTime), err)
-		return nil, fmt.Errorf("request interceptor failed: %w", err)
+		return nil, fmt.Errorf("request middleware failed: %w", err)
 	}
 
 	retryConfig := v.getRetryConfig(options)
@@ -351,14 +352,14 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 	resultRes, err := v.interceptResponse(ctx, res)
 	if err != nil {
 		if !v.logger.IsNoop() {
-			v.logger.Error(ctx, "response interceptor failed", map[string]interface{}{
+			v.logger.Error(ctx, "response middleware failed", map[string]interface{}{
 				"url":         request.FullUrl(),
 				"status_code": res.StatusCode,
 				"error":       err.Error(),
 			})
 		}
 		v.recordMetrics(ctx, request, res, duration, err)
-		return nil, fmt.Errorf("response interceptor failed: %w", err)
+		return nil, fmt.Errorf("response middleware failed: %w", err)
 	}
 
 	if v.config.DebugMode {
@@ -374,8 +375,8 @@ func (v *Vecto) Request(ctx context.Context, url string, method string, options 
 
 func (v *Vecto) interceptRequest(ctx context.Context, req *Request) (resultReq *Request, err error) {
 	resultReq = req
-	for _, interceptor := range v.Interceptors.Request.getAll() {
-		resultReq, err = interceptor(ctx, resultReq)
+	for _, mw := range v.middleware.getRequest() {
+		resultReq, err = mw(ctx, resultReq)
 		if err != nil {
 			return req, err
 		}
@@ -390,14 +391,42 @@ func (v *Vecto) interceptResponse(ctx context.Context, res *Response) (resultRes
 	}
 
 	resultRes = res
-	for _, interceptor := range v.Interceptors.Response.getAll() {
-		resultRes, err = interceptor(ctx, resultRes)
+	for _, mw := range v.middleware.getResponse() {
+		resultRes, err = mw(ctx, resultRes)
 		if err != nil {
 			return resultRes, err
 		}
 	}
 
 	return resultRes, nil
+}
+
+// UseRequest adds a middleware function that will be executed before each request is sent.
+// Middleware functions are executed in the order they were added.
+// If a middleware returns an error, the request chain is stopped and the error is returned.
+//
+// Example:
+//
+//	vecto.UseRequest(func(ctx context.Context, req *Request) (*Request, error) {
+//	    req.SetHeader("X-Custom", "value")
+//	    return req, nil
+//	})
+func (v *Vecto) UseRequest(mw RequestMiddlewareFunc) {
+	v.middleware.addRequest(mw)
+}
+
+// UseResponse adds a middleware function that will be executed after each response is received.
+// Middleware functions are executed in the order they were added.
+// If a middleware returns an error, the response chain is stopped and the error is returned.
+//
+// Example:
+//
+//	vecto.UseResponse(func(ctx context.Context, res *Response) (*Response, error) {
+//	    // Process response
+//	    return res, nil
+//	})
+func (v *Vecto) UseResponse(mw ResponseMiddlewareFunc) {
+	v.middleware.addResponse(mw)
 }
 
 func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions) (*Request, error) {

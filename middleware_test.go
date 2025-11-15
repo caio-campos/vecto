@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestReqInterceptor(t *testing.T) {
+func TestUseRequest(t *testing.T) {
 	srv := newHTTPTestServer()
 	defer srv.Close()
 
@@ -22,21 +22,19 @@ func TestReqInterceptor(t *testing.T) {
 		BaseURL: srv.URL,
 	})
 
-	vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
+	vecto.UseRequest(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
 		if err := req.SetHeader("x-custom", "custom"); err != nil {
 			return req, err
 		}
 		return req, nil
 	})
 
-	vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
+	vecto.UseRequest(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
 		if err := req.SetHeader("x-another", "another"); err != nil {
 			return req, err
 		}
 		return req, nil
 	})
-
-	assert.Len(t, vecto.Interceptors.Request.interceptors, 2)
 
 	res, err := vecto.Post(context.Background(), "/test/custom-header", &RequestOptions{})
 
@@ -47,7 +45,7 @@ func TestReqInterceptor(t *testing.T) {
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
 
-func TestAsyncMultiInterceptor(t *testing.T) {
+func TestAsyncMultiMiddleware(t *testing.T) {
 	srv := newHTTPTestServer()
 	defer srv.Close()
 
@@ -57,7 +55,7 @@ func TestAsyncMultiInterceptor(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 
-	vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
+	vecto.UseRequest(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
 		headers := req.Headers()
 		if err := req.SetHeader("x-req-id", headers["x-index"]); err != nil {
 			return req, err
@@ -66,13 +64,13 @@ func TestAsyncMultiInterceptor(t *testing.T) {
 		return req, nil
 	})
 
-	vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
+	vecto.UseRequest(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
 		headers := req.Headers()
 		assert.Equal(t, headers["x-req-id"], headers["x-index"])
 		return req, nil
 	})
 
-	vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
+	vecto.UseRequest(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
 		statusCodeStr := strings.TrimPrefix(req.FullUrl(), srv.URL+"/test/status/")
 
 		statusCode, _ := strconv.Atoi(statusCodeStr)
@@ -110,7 +108,7 @@ func TestAsyncMultiInterceptor(t *testing.T) {
 	wg.Wait()
 }
 
-func TestResInterceptor(t *testing.T) {
+func TestUseResponse(t *testing.T) {
 	srv := newHTTPTestServer()
 	defer srv.Close()
 
@@ -120,7 +118,7 @@ func TestResInterceptor(t *testing.T) {
 		BaseURL: srv.URL,
 	})
 
-	vecto.Interceptors.Response.Use(func(ctx context.Context, res *Response) (resultRes *Response, err error) {
+	vecto.UseResponse(func(ctx context.Context, res *Response) (resultRes *Response, err error) {
 		json.Unmarshal(res.Data, &mockData)
 
 		assert.Equal(t, http.StatusOK, res.StatusCode)
@@ -130,8 +128,6 @@ func TestResInterceptor(t *testing.T) {
 		return res, nil
 	})
 
-	assert.Len(t, vecto.Interceptors.Response.interceptors, 1)
-
 	res, err := vecto.Get(context.Background(), "/test/pets/1", &RequestOptions{})
 
 	assert.Nil(t, err)
@@ -139,7 +135,7 @@ func TestResInterceptor(t *testing.T) {
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
 
-func TestReqInterceptorAddQueryParam(t *testing.T) {
+func TestRequestMiddlewareAddQueryParam(t *testing.T) {
 	srv := newHTTPTestServer()
 	defer srv.Close()
 
@@ -147,14 +143,12 @@ func TestReqInterceptorAddQueryParam(t *testing.T) {
 		BaseURL: srv.URL,
 	})
 
-	vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
+	vecto.UseRequest(func(ctx context.Context, req *Request) (resultReq *Request, err error) {
 		if err := req.SetParam("added_param", "1"); err != nil {
 			return req, err
 		}
 		return req, nil
 	})
-
-	assert.Len(t, vecto.Interceptors.Request.getAll(), 1)
 
 	res, err := vecto.Get(context.Background(), "/test/query", &RequestOptions{})
 
@@ -164,7 +158,7 @@ func TestReqInterceptorAddQueryParam(t *testing.T) {
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
 
-func TestInterceptorConcurrentAccess(t *testing.T) {
+func TestMiddlewareConcurrentAccess(t *testing.T) {
 	srv := newHTTPTestServer()
 	defer srv.Close()
 
@@ -173,22 +167,18 @@ func TestInterceptorConcurrentAccess(t *testing.T) {
 	})
 
 	var wg sync.WaitGroup
-	interceptorCount := 0
 
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			vecto.Interceptors.Request.Use(func(ctx context.Context, req *Request) (*Request, error) {
+			vecto.UseRequest(func(ctx context.Context, req *Request) (*Request, error) {
 				return req, nil
 			})
 		}()
 	}
 
 	wg.Wait()
-
-	interceptorCount = len(vecto.Interceptors.Request.getAll())
-	assert.Equal(t, 100, interceptorCount)
 
 	_, err := vecto.Get(context.Background(), "/test/pets/1", nil)
 	assert.Nil(t, err)
