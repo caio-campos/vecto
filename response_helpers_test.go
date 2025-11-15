@@ -712,6 +712,7 @@ func TestResponse_Cookie(t *testing.T) {
 			} else {
 				if result == nil {
 					t.Errorf("Cookie() = nil, want non-nil")
+					return
 				}
 				if result.Value != tt.wantValue {
 					t.Errorf("Cookie().Value = %v, want %v", result.Value, tt.wantValue)
@@ -1050,4 +1051,3 @@ func TestResponse_Integration(t *testing.T) {
 		}
 	})
 }
-

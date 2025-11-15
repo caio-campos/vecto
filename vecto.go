@@ -3,6 +3,7 @@ package vecto
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -461,12 +462,8 @@ func (v *Vecto) newRequest(urlStr string, method string, options *RequestOptions
 	data := reqOptions.Data
 	headers := make(map[string]string)
 
-	for k, v := range v.config.Headers {
-		headers[k] = v
-	}
-	for k, v := range reqOptions.Headers {
-		headers[k] = v
-	}
+	maps.Copy(headers, v.config.Headers)
+	maps.Copy(headers, reqOptions.Headers)
 
 	if reqOptions.FormData != nil {
 		data = encodeFormData(reqOptions.FormData)

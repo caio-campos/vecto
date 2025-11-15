@@ -198,7 +198,7 @@ func TestNilContextHandling(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	res, err := vecto.Get(nil, "/test/pets/1", nil)
+	res, err := vecto.Get(context.TODO(), "/test/pets/1", nil)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
