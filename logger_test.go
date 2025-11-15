@@ -78,10 +78,10 @@ func TestNoopLogger(t *testing.T) {
 	t.Run("noop logger with nil context", func(t *testing.T) {
 		logger := newNoopLogger()
 
-		logger.Debug(nil, "debug", nil)
-		logger.Info(nil, "info", nil)
-		logger.Warn(nil, "warn", nil)
-		logger.Error(nil, "error", nil)
+		logger.Debug(context.TODO(), "debug", nil)
+		logger.Info(context.TODO(), "info", nil)
+		logger.Warn(context.TODO(), "warn", nil)
+		logger.Error(context.TODO(), "error", nil)
 	})
 }
 
